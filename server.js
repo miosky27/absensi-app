@@ -93,6 +93,12 @@ function hashPassword(pw) {
   return crypto.createHash('sha256').update(String(pw)).digest('hex');
 }
 
+// Kunci laporan: diturunkan dari password admin, supaya tidak perlu disimpan
+// terpisah. Otomatis berubah kalau password admin diganti.
+function reportKey(config) {
+  return crypto.createHash('sha256').update(config.adminPassword + ':report-key').digest('hex').slice(0, 24);
+}
+
 // ---------- Static file serving ----------
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -293,6 +299,64 @@ const server = http.createServer(async (req, res) => {
         terlambat: e.terlambat,
       }));
       return sendJSON(res, 200, { month, summary, workStartTime: config.workStartTime });
+    }
+
+    // ---- Laporan untuk otomasi (dilindungi report key, bukan token admin) ----
+    if (pathName === '/api/daily-report' && req.method === 'GET') {
+      const key = url.searchParams.get('key');
+      if (key !== reportKey(config)) return sendJSON(res, 403, { error: 'Forbidden' });
+      const date = url.searchParams.get('date') || dateKeyJakarta(new Date().toISOString());
+      const records = readJSON(RECORDS_FILE)
+        .filter((r) => r.dateKey === date)
+        .sort((a, b) => a.timeHHMM.localeCompare(b.timeHHMM));
+
+      if (records.length === 0) {
+        return sendJSON(res, 200, { date, text: `Laporan Absensi ${date}\n\nTidak ada absen tercatat pada tanggal ini.` });
+      }
+      const lines = records.map(
+        (r) =>
+          `- ${r.employee} | ${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB | ${
+            r.withinRadius ? 'lokasi valid' : `lokasi di luar radius (${r.distanceMeters} m)`
+          }`
+      );
+      const text = `Laporan Absensi ${date}\nTotal catatan: ${records.length}\n\n${lines.join('\n')}`;
+      return sendJSON(res, 200, { date, text, records });
+    }
+
+    if (pathName === '/api/monthly-report' && req.method === 'GET') {
+      const key = url.searchParams.get('key');
+      if (key !== reportKey(config)) return sendJSON(res, 403, { error: 'Forbidden' });
+      const month = url.searchParams.get('month') || dateKeyJakarta(new Date().toISOString()).slice(0, 7);
+      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
+
+      const byEmployee = {};
+      for (const emp of config.employees) {
+        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0 };
+      }
+      for (const r of records) {
+        if (!byEmployee[r.employee]) {
+          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0 };
+        }
+        const e = byEmployee[r.employee];
+        e.hariHadir.add(r.dateKey);
+        e.totalAbsen += 1;
+        if (!r.withinRadius) e.diLuarRadius += 1;
+        if (r.type === 'masuk' && config.workStartTime && r.timeHHMM > config.workStartTime) {
+          e.terlambat += 1;
+        }
+      }
+      const summary = Object.values(byEmployee).map((e) => ({
+        employee: e.employee,
+        hariHadir: e.hariHadir.size,
+        totalAbsen: e.totalAbsen,
+        diLuarRadius: e.diLuarRadius,
+        terlambat: e.terlambat,
+      }));
+      const lines = summary.map(
+        (s) => `- ${s.employee}: ${s.hariHadir} hari hadir, ${s.terlambat} kali terlambat, ${s.diLuarRadius} absen di luar radius`
+      );
+      const text = `Rekap Absensi Bulan ${month}\n\n${lines.join('\n')}`;
+      return sendJSON(res, 200, { month, text, summary });
     }
 
     if (pathName === '/api/config' && req.method === 'GET') {
