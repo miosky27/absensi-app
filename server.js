@@ -22,9 +22,10 @@ function ensureFile(file, defaultValue) {
 }
 ensureFile(RECORDS_FILE, []);
 ensureFile(CONFIG_FILE, {
-  officeLat: -6.200000,
-  officeLng: 106.816666,
-  radiusMeters: 10,
+  // Beberapa lokasi kantor/cabang. Absen valid jika berada dalam radius SALAH SATU lokasi.
+  locations: [
+    { name: "Kantor Pusat", lat: -6.200000, lng: 106.816666, radiusMeters: 10 },
+  ],
   // Daftar karyawan: login memakai nomor telepon
   employees: [
     { phone: "081234567890", name: "Contoh Karyawan 1" },
@@ -40,6 +41,34 @@ function readJSON(file) {
 }
 function writeJSON(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+// Migrasi otomatis dari skema lama (1 lokasi: officeLat/officeLng/radiusMeters)
+// ke skema baru (banyak lokasi), supaya config.json yang sudah ada tidak rusak.
+function migrateConfig(config) {
+  if (!config.locations && typeof config.officeLat === 'number') {
+    config.locations = [
+      { name: 'Kantor', lat: config.officeLat, lng: config.officeLng, radiusMeters: config.radiusMeters || 10 },
+    ];
+    delete config.officeLat;
+    delete config.officeLng;
+    delete config.radiusMeters;
+    writeJSON(CONFIG_FILE, config);
+  }
+  if (!Array.isArray(config.locations)) config.locations = [];
+  return config;
+}
+
+// Jarak terpendek ke lokasi mana pun, dan lokasi mana yang terdekat.
+function nearestLocation(lat, lng, locations) {
+  let best = null;
+  for (const loc of locations) {
+    const d = distanceMeters(lat, lng, loc.lat, loc.lng);
+    if (!best || d < best.distanceMeters) {
+      best = { name: loc.name, distanceMeters: d, radiusMeters: loc.radiusMeters, withinRadius: d <= loc.radiusMeters };
+    }
+  }
+  return best;
 }
 
 // ---------- Haversine distance (meter) ----------
@@ -161,7 +190,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathName = url.pathname;
-    const config = readJSON(CONFIG_FILE);
+    const config = migrateConfig(readJSON(CONFIG_FILE));
 
     // CORS (untuk kemudahan jika frontend dipisah)
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -175,7 +204,7 @@ const server = http.createServer(async (req, res) => {
     // ---- Public config (tanpa password admin, tanpa daftar nomor) ----
     if (pathName === '/api/public-config' && req.method === 'GET') {
       return sendJSON(res, 200, {
-        radiusMeters: config.radiusMeters,
+        locationCount: config.locations.length,
       });
     }
 
@@ -210,8 +239,11 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 400, { error: 'Nomor telepon tidak terdaftar. Hubungi admin untuk didaftarkan.' });
       }
 
-      const dist = distanceMeters(lat, lng, config.officeLat, config.officeLng);
-      const withinRadius = dist <= config.radiusMeters;
+      if (config.locations.length === 0) {
+        return sendJSON(res, 400, { error: 'Belum ada lokasi kantor yang diatur. Hubungi admin.' });
+      }
+      const nearest = nearestLocation(lat, lng, config.locations);
+      const withinRadius = nearest.withinRadius;
 
       const id = crypto.randomUUID();
       const serverTime = new Date().toISOString();
@@ -226,7 +258,8 @@ const server = http.createServer(async (req, res) => {
         type, // 'masuk' | 'keluar'
         lat,
         lng,
-        distanceMeters: Math.round(dist),
+        nearestLocation: nearest.name,
+        distanceMeters: Math.round(nearest.distanceMeters),
         withinRadius,
         photoFilename,
         serverTime,
@@ -242,10 +275,11 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, {
         ok: true,
         withinRadius,
-        distanceMeters: Math.round(dist),
+        nearestLocation: nearest.name,
+        distanceMeters: Math.round(nearest.distanceMeters),
         message: withinRadius
-          ? 'Absen berhasil dan lokasi terverifikasi.'
-          : `Absen tercatat, tetapi lokasi di luar radius kantor (jarak ${Math.round(dist)} m).`,
+          ? `Absen berhasil, lokasi terverifikasi di ${nearest.name}.`
+          : `Absen tercatat, tetapi lokasi di luar radius ${nearest.name} (jarak ${Math.round(nearest.distanceMeters)} m).`,
       });
     }
 
@@ -316,7 +350,9 @@ const server = http.createServer(async (req, res) => {
       const lines = records.map(
         (r) =>
           `- ${r.employee} | ${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB | ${
-            r.withinRadius ? 'lokasi valid' : `lokasi di luar radius (${r.distanceMeters} m)`
+            r.withinRadius
+              ? `lokasi valid (${r.nearestLocation || 'kantor'})`
+              : `di luar radius ${r.nearestLocation || 'kantor'} (${r.distanceMeters} m)`
           }`
       );
       const text = `Laporan Absensi ${date}\nTotal catatan: ${records.length}\n\n${lines.join('\n')}`;
