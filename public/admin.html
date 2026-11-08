@@ -35,6 +35,14 @@
   #overlay { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:50; }
   #overlay img { max-width: 92%; max-height: 92%; border-radius: 8px; }
   .hint { font-size:12px; color:#888; }
+  .summary-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; margin-bottom:16px; }
+  .summary-card { border-radius:12px; padding:14px; text-align:center; }
+  .summary-card .num { font-size:26px; font-weight:800; line-height:1.1; }
+  .summary-card .lbl { font-size:12px; font-weight:600; margin-top:2px; }
+  .sc-ontime { background:#e6f4ea; color:#137333; }
+  .sc-late { background:#fef7e0; color:#b06000; }
+  .sc-absent { background:#fce8e6; color:#c5221f; }
+  .sc-total { background:#e8f0fe; color:#1a73e8; }
 </style>
 </head>
 <body>
@@ -56,6 +64,7 @@
 
     <div id="tab-harian" class="card">
       <div class="field"><label>Tanggal</label><input type="date" id="dateInput" /></div>
+      <div class="summary-grid" id="summaryGrid"></div>
       <div style="overflow-x:auto">
       <table id="dailyTable">
         <thead><tr><th>Foto</th><th>Nama</th><th>Jam</th><th>Tipe</th><th>Lokasi</th></tr></thead>
@@ -128,9 +137,8 @@ function showApp() {
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('dateInput').value = today;
   document.getElementById('monthInput').value = today.slice(0,7);
-  loadDaily();
+  loadConfig().then(loadDaily);
   loadMonthly();
-  loadConfig();
 }
 
 document.querySelectorAll('.tab').forEach((tab) => {
@@ -150,14 +158,17 @@ async function loadDaily() {
   const date = document.getElementById('dateInput').value;
   const res = await fetch('/api/records?date=' + date, { headers: authHeaders() });
   const data = await res.json();
+  const records = data.records || [];
+  renderSummary(records);
+
   const tbody = document.querySelector('#dailyTable tbody');
   tbody.innerHTML = '';
-  if (!data.records || data.records.length === 0) {
+  if (records.length === 0) {
     document.getElementById('dailyEmpty').textContent = 'Belum ada absen di tanggal ini.';
     return;
   }
   document.getElementById('dailyEmpty').textContent = '';
-  for (const r of data.records.sort((a,b) => a.timeHHMM.localeCompare(b.timeHHMM))) {
+  for (const r of records.sort((a,b) => a.timeHHMM.localeCompare(b.timeHHMM))) {
     const tr = document.createElement('tr');
     const photoUrl = '/api/photo/' + r.photoFilename + '?t=' + token;
     tr.innerHTML = `
@@ -169,6 +180,33 @@ async function loadDaily() {
     `;
     tbody.appendChild(tr);
   }
+}
+
+let currentWorkStart = '08:00';
+
+function renderSummary(records) {
+  const totalEmployees = currentEmployees.length;
+  const maskukByEmployee = {}; // nama -> jam masuk paling awal
+  for (const r of records) {
+    if (r.type !== 'masuk') continue;
+    if (!maskukByEmployee[r.employee] || r.timeHHMM < maskukByEmployee[r.employee]) {
+      maskukByEmployee[r.employee] = r.timeHHMM;
+    }
+  }
+  const hadirNames = Object.keys(maskukByEmployee);
+  let onTime = 0, terlambat = 0;
+  for (const name of hadirNames) {
+    if (currentWorkStart && maskukByEmployee[name] > currentWorkStart) terlambat++;
+    else onTime++;
+  }
+  const alpa = Math.max(0, totalEmployees - hadirNames.length);
+
+  document.getElementById('summaryGrid').innerHTML = `
+    <div class="summary-card sc-ontime"><div class="num">${onTime}</div><div class="lbl">Tepat Waktu</div></div>
+    <div class="summary-card sc-late"><div class="num">${terlambat}</div><div class="lbl">Terlambat</div></div>
+    <div class="summary-card sc-absent"><div class="num">${alpa}</div><div class="lbl">Alpa (tidak absen)</div></div>
+    <div class="summary-card sc-total"><div class="num">${totalEmployees}</div><div class="lbl">Total Karyawan</div></div>
+  `;
 }
 
 async function loadMonthly() {
@@ -193,6 +231,7 @@ async function loadConfig() {
   const res = await fetch('/api/config', { headers: authHeaders() });
   const cfg = await res.json();
   document.getElementById('cfgWorkStart').value = cfg.workStartTime || '';
+  currentWorkStart = cfg.workStartTime || '08:00';
   currentEmployees = cfg.employees || [];
   currentLocations = cfg.locations && cfg.locations.length ? cfg.locations : [{ name: '', lat: '', lng: '', radiusMeters: 10 }];
   renderEmpList();
