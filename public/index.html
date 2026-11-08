@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Absensi Karyawan</title>
+<link rel="manifest" href="/manifest.json" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: #f4f6f8; color: #1a1a1a; min-height: 100vh;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 14px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #333; }
+  input[type=text], input[type=tel] {
+    width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; margin-bottom: 14px;
+  }
+  .btn {
+    width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600;
+    cursor: pointer; margin-bottom: 10px;
+  }
+  .btn-primary { background: #1a73e8; color: #fff; }
+  .btn-secondary { background: #e8eaed; color: #1a1a1a; }
+  .btn:disabled { opacity: 0.5; }
+  .row-2 { display: flex; gap: 10px; }
+  .row-2 .btn { flex: 1; }
+  .preview { width: 100%; border-radius: 10px; margin-bottom: 14px; display: none; }
+  .status { padding: 12px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 14px; display: none; }
+  .status.ok { background: #e6f4ea; color: #137333; display: block; }
+  .status.warn { background: #fef7e0; color: #b06000; display: block; }
+  .status.err { background: #fce8e6; color: #c5221f; display: block; }
+  .muted { color: #888; font-size: 12px; }
+  .name-tag { font-weight: 700; color: #1a73e8; }
+  a.admin-link { display: block; text-align: center; margin-top: 10px; font-size: 13px; color: #888; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📍 Absensi Karyawan</h1>
+  <div class="sub">Absen dengan foto, lokasi, dan waktu otomatis</div>
+
+  <div class="card" id="phoneCard">
+    <label>Nomor Telepon</label>
+    <input type="tel" id="phoneInput" placeholder="Contoh: 081234567890" inputmode="numeric" />
+    <button class="btn btn-primary" id="checkPhoneBtn">Lanjutkan</button>
+    <div class="status" id="phoneStatus"></div>
+  </div>
+
+  <div class="card" id="actionCard" style="display:none">
+    <div class="sub">Halo, <span class="name-tag" id="empName"></span></div>
+
+    <div class="row-2" style="margin-bottom:14px">
+      <button class="btn btn-primary" id="btnMasuk">Absen Masuk</button>
+      <button class="btn btn-secondary" id="btnKeluar">Absen Keluar</button>
+    </div>
+
+    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" />
+    <img id="preview" class="preview" />
+
+    <div class="status" id="actionStatus"></div>
+    <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
+  </div>
+
+  <div class="muted" style="text-align:center">
+    Pastikan izin <b>Lokasi</b> dan <b>Kamera</b> diaktifkan di browser Anda.
+  </div>
+  <a class="admin-link" href="/admin.html">Admin</a>
+</div>
+
+<script>
+const phoneCard = document.getElementById('phoneCard');
+const actionCard = document.getElementById('actionCard');
+const phoneInput = document.getElementById('phoneInput');
+const phoneStatus = document.getElementById('phoneStatus');
+const empName = document.getElementById('empName');
+const photoInput = document.getElementById('photoInput');
+const preview = document.getElementById('preview');
+const actionStatus = document.getElementById('actionStatus');
+
+let currentPhone = '';
+let currentType = null;
+
+function showStatus(el, msg, cls) {
+  el.textContent = msg;
+  el.className = 'status ' + cls;
+}
+
+document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
+  const phone = phoneInput.value.trim();
+  if (!phone) return showStatus(phoneStatus, 'Nomor telepon wajib diisi', 'err');
+  showStatus(phoneStatus, 'Memeriksa...', 'warn');
+  try {
+    const res = await fetch('/api/check-phone', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    const data = await res.json();
+    if (!res.ok) return showStatus(phoneStatus, data.error || 'Nomor tidak ditemukan', 'err');
+    currentPhone = phone;
+    empName.textContent = data.name;
+    phoneCard.style.display = 'none';
+    actionCard.style.display = 'block';
+    phoneStatus.style.display = 'none';
+  } catch (e) {
+    showStatus(phoneStatus, 'Gagal menghubungi server: ' + e.message, 'err');
+  }
+});
+
+document.getElementById('gantiNomor').addEventListener('click', () => {
+  actionCard.style.display = 'none';
+  phoneCard.style.display = 'block';
+  preview.style.display = 'none';
+  actionStatus.style.display = 'none';
+});
+
+function startAbsen(type) {
+  currentType = type;
+  photoInput.value = '';
+  photoInput.click();
+}
+document.getElementById('btnMasuk').addEventListener('click', () => startAbsen('masuk'));
+document.getElementById('btnKeluar').addEventListener('click', () => startAbsen('keluar'));
+
+photoInput.addEventListener('change', async () => {
+  const file = photoInput.files[0];
+  if (!file) return;
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'block';
+
+  showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
+  if (!navigator.geolocation) {
+    return showStatus(actionStatus, 'Perangkat tidak mendukung GPS.', 'err');
+  }
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      showStatus(actionStatus, 'Mengirim data absen...', 'warn');
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await fetch('/api/checkin', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone: currentPhone,
+              type: currentType,
+              lat: latitude,
+              lng: longitude,
+              photoBase64: reader.result,
+              deviceTime: new Date().toISOString(),
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) return showStatus(actionStatus, data.error || 'Gagal mengirim absen', 'err');
+          showStatus(actionStatus, data.message, data.withinRadius ? 'ok' : 'warn');
+        } catch (e) {
+          showStatus(actionStatus, 'Gagal mengirim: ' + e.message, 'err');
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+    (err) => {
+      showStatus(actionStatus, 'Gagal mengambil lokasi: ' + err.message + '. Pastikan izin lokasi aktif.', 'err');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+});
+</script>
+</body>
+</html>

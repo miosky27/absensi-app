@@ -1,0 +1,12 @@
+{
+  "name": "absensi-app",
+  "version": "1.0.0",
+  "description": "Aplikasi absensi karyawan: foto + lokasi + waktu, laporan harian & rekap bulanan",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

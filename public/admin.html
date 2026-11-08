@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Absensi</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background:#f4f6f8; color:#1a1a1a; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 14px 60px; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .card { background:#fff; border-radius: 14px; padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom:16px; }
+  input, select { padding: 10px 12px; border:1px solid #ddd; border-radius: 8px; font-size: 14px; }
+  .btn { padding: 10px 16px; border:none; border-radius: 8px; background:#1a73e8; color:#fff; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn.secondary { background:#e8eaed; color:#1a1a1a; }
+  .tabs { display:flex; gap:8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tab { padding: 8px 14px; border-radius: 20px; background:#e8eaed; cursor:pointer; font-size:13px; font-weight:600; }
+  .tab.active { background:#1a73e8; color:#fff; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid #eee; text-align:left; }
+  th { color:#666; font-weight:600; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight:700; }
+  .badge.ok { background:#e6f4ea; color:#137333; }
+  .badge.bad { background:#fce8e6; color:#c5221f; }
+  .thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+  .field { margin-bottom: 12px; }
+  .field label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#444; }
+  .field input { width: 100%; }
+  .section-title { font-size: 14px; font-weight:700; margin: 18px 0 8px; }
+  .emp-row { display:flex; gap:8px; margin-bottom:8px; }
+  .emp-row input { flex: 1; }
+  #overlay { position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:50; }
+  #overlay img { max-width: 92%; max-height: 92%; border-radius: 8px; }
+  .hint { font-size:12px; color:#888; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔐 Admin Absensi</h1>
+
+  <div class="card" id="loginCard">
+    <div class="field"><label>Password Admin</label><input type="password" id="pwInput" /></div>
+    <button class="btn" id="loginBtn">Masuk</button>
+    <div id="loginErr" style="color:#c5221f;font-size:13px;margin-top:8px"></div>
+  </div>
+
+  <div id="appArea" style="display:none">
+    <div class="tabs">
+      <div class="tab active" data-tab="harian">Laporan Harian</div>
+      <div class="tab" data-tab="bulanan">Rekap Bulanan</div>
+      <div class="tab" data-tab="setting">Pengaturan</div>
+    </div>
+
+    <div id="tab-harian" class="card">
+      <div class="field"><label>Tanggal</label><input type="date" id="dateInput" /></div>
+      <div style="overflow-x:auto">
+      <table id="dailyTable">
+        <thead><tr><th>Foto</th><th>Nama</th><th>Jam</th><th>Tipe</th><th>Lokasi</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+      <div class="hint" id="dailyEmpty"></div>
+    </div>
+
+    <div id="tab-bulanan" class="card" style="display:none">
+      <div class="field"><label>Bulan</label><input type="month" id="monthInput" /></div>
+      <div style="overflow-x:auto">
+      <table id="monthTable">
+        <thead><tr><th>Nama</th><th>Hari Hadir</th><th>Total Absen</th><th>Terlambat</th><th>Di Luar Radius</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+    </div>
+
+    <div id="tab-setting" class="card" style="display:none">
+      <div class="field"><label>Latitude Kantor</label><input type="text" id="cfgLat" /></div>
+      <div class="field"><label>Longitude Kantor</label><input type="text" id="cfgLng" /></div>
+      <div class="hint">Tips: buka Google Maps di lokasi kantor, tekan lama titik lokasi untuk dapat koordinatnya, lalu salin ke sini.</div>
+      <div class="field" style="margin-top:12px"><label>Radius Absen Valid (meter)</label><input type="text" id="cfgRadius" /></div>
+      <div class="field"><label>Jam Masuk Kerja (untuk hitung terlambat)</label><input type="text" id="cfgWorkStart" placeholder="08:00" /></div>
+      <div class="field"><label>Ganti Password Admin (kosongkan jika tidak diubah)</label><input type="password" id="cfgPassword" /></div>
+
+      <div class="section-title">Daftar Karyawan</div>
+      <div id="empList"></div>
+      <button class="btn secondary" id="addEmpBtn" type="button">+ Tambah Karyawan</button>
+
+      <div style="margin-top:16px">
+        <button class="btn" id="saveCfgBtn">Simpan Pengaturan</button>
+        <span id="saveMsg" style="margin-left:10px;font-size:13px;color:#137333"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="overlay"><img id="overlayImg" /></div>
+
+<script>
+let token = localStorage.getItem('absensi_admin_token') || '';
+
+function authHeaders() { return { Authorization: 'Bearer ' + token }; }
+
+async function tryAutoLogin() {
+  if (!token) return;
+  const res = await fetch('/api/config', { headers: authHeaders() });
+  if (res.ok) showApp();
+}
+tryAutoLogin();
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const password = document.getElementById('pwInput').value;
+  const res = await fetch('/api/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }),
+  });
+  const data = await res.json();
+  if (!res.ok) { document.getElementById('loginErr').textContent = data.error; return; }
+  token = data.token;
+  localStorage.setItem('absensi_admin_token', token);
+  showApp();
+});
+
+function showApp() {
+  document.getElementById('loginCard').style.display = 'none';
+  document.getElementById('appArea').style.display = 'block';
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('dateInput').value = today;
+  document.getElementById('monthInput').value = today.slice(0,7);
+  loadDaily();
+  loadMonthly();
+  loadConfig();
+}
+
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    ['harian','bulanan','setting'].forEach((name) => {
+      document.getElementById('tab-' + name).style.display = (name === tab.dataset.tab) ? 'block' : 'none';
+    });
+  });
+});
+
+document.getElementById('dateInput').addEventListener('change', loadDaily);
+document.getElementById('monthInput').addEventListener('change', loadMonthly);
+
+async function loadDaily() {
+  const date = document.getElementById('dateInput').value;
+  const res = await fetch('/api/records?date=' + date, { headers: authHeaders() });
+  const data = await res.json();
+  const tbody = document.querySelector('#dailyTable tbody');
+  tbody.innerHTML = '';
+  if (!data.records || data.records.length === 0) {
+    document.getElementById('dailyEmpty').textContent = 'Belum ada absen di tanggal ini.';
+    return;
+  }
+  document.getElementById('dailyEmpty').textContent = '';
+  for (const r of data.records.sort((a,b) => a.timeHHMM.localeCompare(b.timeHHMM))) {
+    const tr = document.createElement('tr');
+    const photoUrl = '/api/photo/' + r.photoFilename + '?t=' + token;
+    tr.innerHTML = `
+      <td><img class="thumb" src="${photoUrl}" onclick="openOverlay('${photoUrl}')" /></td>
+      <td>${r.employee}</td>
+      <td>${r.timeHHMM}</td>
+      <td>${r.type === 'masuk' ? 'Masuk' : 'Keluar'}</td>
+      <td><span class="badge ${r.withinRadius ? 'ok' : 'bad'}">${r.withinRadius ? 'Valid' : r.distanceMeters + 'm'}</span></td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadMonthly() {
+  const month = document.getElementById('monthInput').value;
+  const res = await fetch('/api/summary?month=' + month, { headers: authHeaders() });
+  const data = await res.json();
+  const tbody = document.querySelector('#monthTable tbody');
+  tbody.innerHTML = '';
+  for (const s of data.summary) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${s.employee}</td><td>${s.hariHadir}</td><td>${s.totalAbsen}</td>
+      <td>${s.terlambat}</td><td>${s.diLuarRadius}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+let currentEmployees = [];
+
+async function loadConfig() {
+  const res = await fetch('/api/config', { headers: authHeaders() });
+  const cfg = await res.json();
+  document.getElementById('cfgLat').value = cfg.officeLat;
+  document.getElementById('cfgLng').value = cfg.officeLng;
+  document.getElementById('cfgRadius').value = cfg.radiusMeters;
+  document.getElementById('cfgWorkStart').value = cfg.workStartTime || '';
+  currentEmployees = cfg.employees || [];
+  renderEmpList();
+}
+
+function renderEmpList() {
+  const container = document.getElementById('empList');
+  container.innerHTML = '';
+  currentEmployees.forEach((emp, i) => {
+    const row = document.createElement('div');
+    row.className = 'emp-row';
+    row.innerHTML = `
+      <input type="text" placeholder="Nomor telepon" value="${emp.phone}" data-idx="${i}" data-field="phone" />
+      <input type="text" placeholder="Nama karyawan" value="${emp.name}" data-idx="${i}" data-field="name" />
+      <button class="btn secondary" type="button" data-remove="${i}">Hapus</button>
+    `;
+    container.appendChild(row);
+  });
+  container.querySelectorAll('input').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      currentEmployees[inp.dataset.idx][inp.dataset.field] = inp.value;
+    });
+  });
+  container.querySelectorAll('[data-remove]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      currentEmployees.splice(Number(btn.dataset.remove), 1);
+      renderEmpList();
+    });
+  });
+}
+
+document.getElementById('addEmpBtn').addEventListener('click', () => {
+  currentEmployees.push({ phone: '', name: '' });
+  renderEmpList();
+});
+
+document.getElementById('saveCfgBtn').addEventListener('click', async () => {
+  const body = {
+    officeLat: parseFloat(document.getElementById('cfgLat').value),
+    officeLng: parseFloat(document.getElementById('cfgLng').value),
+    radiusMeters: parseFloat(document.getElementById('cfgRadius').value),
+    workStartTime: document.getElementById('cfgWorkStart').value,
+    employees: currentEmployees.filter((e) => e.phone && e.name),
+  };
+  const pw = document.getElementById('cfgPassword').value;
+  if (pw) body.adminPassword = pw;
+  const res = await fetch('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body),
+  });
+  const msg = document.getElementById('saveMsg');
+  if (res.ok) { msg.textContent = 'Tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); }
+  else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan'; }
+});
+
+function openOverlay(src) {
+  document.getElementById('overlayImg').src = src;
+  document.getElementById('overlay').style.display = 'flex';
+}
+document.getElementById('overlay').addEventListener('click', () => {
+  document.getElementById('overlay').style.display = 'none';
+});
+</script>
+</body>
+</html>
