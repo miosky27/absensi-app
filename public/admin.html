@@ -43,6 +43,7 @@
   .sc-late { background:#fef7e0; color:#b06000; }
   .sc-absent { background:#fce8e6; color:#c5221f; }
   .sc-total { background:#e8f0fe; color:#1a73e8; }
+  .sc-overtime { background:#f3e8fd; color:#8430ce; }
 </style>
 </head>
 <body>
@@ -78,7 +79,7 @@
       <div class="field"><label>Bulan</label><input type="month" id="monthInput" /></div>
       <div style="overflow-x:auto">
       <table id="monthTable">
-        <thead><tr><th>Nama</th><th>Hari Hadir</th><th>Total Absen</th><th>Terlambat</th><th>Di Luar Radius</th></tr></thead>
+        <thead><tr><th>Nama</th><th>Hari Hadir</th><th>Total Absen</th><th>Terlambat</th><th>Di Luar Radius</th><th>Lembur (jam)</th></tr></thead>
         <tbody></tbody>
       </table>
       </div>
@@ -201,11 +202,29 @@ function renderSummary(records) {
   }
   const alpa = Math.max(0, totalEmployees - hadirNames.length);
 
+  // Lembur: pulang - masuk - 8 jam, per karyawan (pakai masuk paling awal & keluar paling akhir)
+  const keluarByEmployee = {};
+  for (const r of records) {
+    if (r.type !== 'keluar') continue;
+    if (!keluarByEmployee[r.employee] || r.timeHHMM > keluarByEmployee[r.employee]) {
+      keluarByEmployee[r.employee] = r.timeHHMM;
+    }
+  }
+  const toMin = (hhmm) => { const [h,m] = hhmm.split(':').map(Number); return h*60+m; };
+  let totalLemburMenit = 0;
+  for (const name of hadirNames) {
+    if (!keluarByEmployee[name]) continue;
+    const menit = toMin(keluarByEmployee[name]) - toMin(maskukByEmployee[name]) - 8*60;
+    if (menit > 0) totalLemburMenit += menit;
+  }
+  const lemburJam = Math.round((totalLemburMenit / 60) * 10) / 10;
+
   document.getElementById('summaryGrid').innerHTML = `
     <div class="summary-card sc-ontime"><div class="num">${onTime}</div><div class="lbl">Tepat Waktu</div></div>
     <div class="summary-card sc-late"><div class="num">${terlambat}</div><div class="lbl">Terlambat</div></div>
     <div class="summary-card sc-absent"><div class="num">${alpa}</div><div class="lbl">Alpa (tidak absen)</div></div>
     <div class="summary-card sc-total"><div class="num">${totalEmployees}</div><div class="lbl">Total Karyawan</div></div>
+    <div class="summary-card sc-overtime" style="grid-column: span 2"><div class="num">${lemburJam} jam</div><div class="lbl">Total Lembur Hari Ini</div></div>
   `;
 }
 
@@ -219,7 +238,7 @@ async function loadMonthly() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${s.employee}</td><td>${s.hariHadir}</td><td>${s.totalAbsen}</td>
-      <td>${s.terlambat}</td><td>${s.diLuarRadius}</td>
+      <td>${s.terlambat}</td><td>${s.diLuarRadius}</td><td>${s.lemburJam}</td>
     `;
     tbody.appendChild(tr);
   }

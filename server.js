@@ -59,6 +59,42 @@ function migrateConfig(config) {
   return config;
 }
 
+// ---------- Lembur ----------
+// Jam kerja standar sebelum dihitung lembur.
+const JAM_KERJA_STANDAR_MENIT = 8 * 60;
+
+function timeToMinutes(hhmm) {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Mengelompokkan records per (karyawan, tanggal), ambil jam masuk paling awal
+// dan jam keluar paling akhir, lalu hitung lembur = (pulang - masuk) - 8 jam.
+// Mengembalikan Map: "nama|tanggal" -> menit lembur (0 jika tidak lembur atau data tidak lengkap).
+function computeLemburByEmployeeDate(records) {
+  const grouped = {}; // key: employee|date -> { masuk: minMenit, keluar: maxMenit }
+  for (const r of records) {
+    const key = r.employee + '|' + r.dateKey;
+    if (!grouped[key]) grouped[key] = { masuk: null, keluar: null };
+    const menit = timeToMinutes(r.timeHHMM);
+    if (r.type === 'masuk') {
+      if (grouped[key].masuk === null || menit < grouped[key].masuk) grouped[key].masuk = menit;
+    } else if (r.type === 'keluar') {
+      if (grouped[key].keluar === null || menit > grouped[key].keluar) grouped[key].keluar = menit;
+    }
+  }
+  const result = {};
+  for (const key of Object.keys(grouped)) {
+    const { masuk, keluar } = grouped[key];
+    if (masuk === null || keluar === null || keluar <= masuk) {
+      result[key] = 0;
+      continue;
+    }
+    result[key] = Math.max(0, keluar - masuk - JAM_KERJA_STANDAR_MENIT);
+  }
+  return result;
+}
+
 // Jarak terpendek ke lokasi mana pun, dan lokasi mana yang terdekat.
 function nearestLocation(lat, lng, locations) {
   let best = null;
@@ -308,14 +344,15 @@ const server = http.createServer(async (req, res) => {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const month = url.searchParams.get('month'); // YYYY-MM
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
+      const lemburMap = computeLemburByEmployeeDate(records);
 
       const byEmployee = {};
       for (const emp of config.employees) {
-        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0 };
+        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
       }
       for (const r of records) {
         if (!byEmployee[r.employee]) {
-          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0 };
+          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
         }
         const e = byEmployee[r.employee];
         e.hariHadir.add(r.dateKey);
@@ -325,12 +362,18 @@ const server = http.createServer(async (req, res) => {
           e.terlambat += 1;
         }
       }
+      // Jumlahkan lembur per (karyawan, tanggal) sekali saja per kombinasi.
+      for (const key of Object.keys(lemburMap)) {
+        const [employee] = key.split('|');
+        if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key];
+      }
       const summary = Object.values(byEmployee).map((e) => ({
         employee: e.employee,
         hariHadir: e.hariHadir.size,
         totalAbsen: e.totalAbsen,
         diLuarRadius: e.diLuarRadius,
         terlambat: e.terlambat,
+        lemburJam: Math.round((e.lemburMenit / 60) * 10) / 10,
       }));
       return sendJSON(res, 200, { month, summary, workStartTime: config.workStartTime });
     }
@@ -347,6 +390,7 @@ const server = http.createServer(async (req, res) => {
       if (records.length === 0) {
         return sendJSON(res, 200, { date, text: `Laporan Absensi ${date}\n\nTidak ada absen tercatat pada tanggal ini.` });
       }
+      const lemburMap = computeLemburByEmployeeDate(records);
       const lines = records.map(
         (r) =>
           `- ${r.employee} | ${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB | ${
@@ -355,7 +399,11 @@ const server = http.createServer(async (req, res) => {
               : `di luar radius ${r.nearestLocation || 'kantor'} (${r.distanceMeters} m)`
           }`
       );
-      const text = `Laporan Absensi ${date}\nTotal catatan: ${records.length}\n\n${lines.join('\n')}`;
+      const lemburLines = Object.entries(lemburMap)
+        .filter(([, menit]) => menit > 0)
+        .map(([key, menit]) => `- ${key.split('|')[0]}: lembur ${(menit / 60).toFixed(1)} jam`);
+      const lemburSection = lemburLines.length ? `\n\nLembur:\n${lemburLines.join('\n')}` : '';
+      const text = `Laporan Absensi ${date}\nTotal catatan: ${records.length}\n\n${lines.join('\n')}${lemburSection}`;
       return sendJSON(res, 200, { date, text, records });
     }
 
@@ -364,14 +412,15 @@ const server = http.createServer(async (req, res) => {
       if (key !== reportKey(config)) return sendJSON(res, 403, { error: 'Forbidden' });
       const month = url.searchParams.get('month') || dateKeyJakarta(new Date().toISOString()).slice(0, 7);
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
+      const lemburMap = computeLemburByEmployeeDate(records);
 
       const byEmployee = {};
       for (const emp of config.employees) {
-        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0 };
+        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
       }
       for (const r of records) {
         if (!byEmployee[r.employee]) {
-          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0 };
+          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
         }
         const e = byEmployee[r.employee];
         e.hariHadir.add(r.dateKey);
@@ -381,15 +430,21 @@ const server = http.createServer(async (req, res) => {
           e.terlambat += 1;
         }
       }
+      for (const key of Object.keys(lemburMap)) {
+        const [employee] = key.split('|');
+        if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key];
+      }
       const summary = Object.values(byEmployee).map((e) => ({
         employee: e.employee,
         hariHadir: e.hariHadir.size,
         totalAbsen: e.totalAbsen,
         diLuarRadius: e.diLuarRadius,
         terlambat: e.terlambat,
+        lemburJam: Math.round((e.lemburMenit / 60) * 10) / 10,
       }));
       const lines = summary.map(
-        (s) => `- ${s.employee}: ${s.hariHadir} hari hadir, ${s.terlambat} kali terlambat, ${s.diLuarRadius} absen di luar radius`
+        (s) =>
+          `- ${s.employee}: ${s.hariHadir} hari hadir, ${s.terlambat} kali terlambat, ${s.diLuarRadius} absen di luar radius, ${s.lemburJam} jam lembur`
       );
       const text = `Rekap Absensi Bulan ${month}\n\n${lines.join('\n')}`;
       return sendJSON(res, 200, { month, text, summary });
