@@ -49,6 +49,14 @@
   .badge.aktif { background:#e6f4ea; color:#137333; }
   .badge.nonaktif { background:#eceff1; color:#777; }
   .thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+  .emp-select-box { border:1px solid #ddd; border-radius:10px; padding:4px 10px; max-height:240px; overflow-y:auto; background:#fff; }
+  .emp-select-box .emp-all-row { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid #eee; font-weight:700; color:#702464; cursor:pointer; margin:0; }
+  .emp-select-box .emp-check-row { display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid #f3f3f3; font-size:13px; cursor:pointer; margin:0; }
+  .emp-select-box .emp-check-row:last-child { border-bottom:none; }
+  .emp-select-box input[type=checkbox], .emp-all-row input[type=checkbox] { width:18px; height:18px; flex-shrink:0; accent-color:#702464; }
+  .emp-check-row .emp-avatar-sm { width:26px; height:26px; border-radius:50%; object-fit:cover; background:#f3ead8; flex-shrink:0; }
+  .emp-check-meta { font-size:11px; color:#999; }
+  .emp-selected-count { font-size:12px; color:#702464; font-weight:600; margin-top:8px; }
   .field { margin-bottom: 12px; }
   .field label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#444; }
   .field input, .field select { width: 100%; }
@@ -286,7 +294,21 @@
               <option value="detail">Detail Harian (jam masuk/pulang/lembur per tanggal)</option>
             </select>
           </div>
-          <button class="btn" type="button" id="exportDownloadBtn">Unduh CSV</button>
+          <div class="field"><label>Format File</label>
+            <select id="exportFormat">
+              <option value="xlsx">Excel (.xlsx)</option>
+              <option value="csv">CSV</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Pilih Karyawan</label>
+            <div class="emp-select-box">
+              <div class="emp-all-row" id="exportAllRow"><input type="checkbox" id="exportAllChk" checked /> Semua Karyawan</div>
+              <div id="exportEmpList"></div>
+            </div>
+            <div class="emp-selected-count" id="exportSelectedCount"></div>
+          </div>
+          <button class="btn" type="button" id="exportDownloadBtn">Unduh Rekap</button>
           <div class="hint" id="exportStatus"></div>
         </div>
       </div>
@@ -428,7 +450,7 @@ document.querySelectorAll('#page-absensi .tab').forEach((tab) => {
 document.getElementById('dateInput').addEventListener('change', loadDaily);
 document.getElementById('monthInput').addEventListener('change', loadMonthly);
 
-// ---- Export rekap absensi (CSV, rentang tanggal bebas) ----
+// ---- Export rekap absensi (Excel/CSV, rentang tanggal & karyawan bebas) ----
 (function () {
   const fromEl = document.getElementById('exportFrom');
   const toEl = document.getElementById('exportTo');
@@ -441,11 +463,18 @@ document.getElementById('monthInput').addEventListener('change', loadMonthly);
     const from = fromEl.value;
     const to = toEl.value;
     const mode = document.getElementById('exportMode').value;
+    const format = document.getElementById('exportFormat').value;
     if (!from || !to) { statusEl.textContent = 'Tanggal mulai dan selesai wajib diisi.'; return; }
     if (to < from) { statusEl.textContent = 'Tanggal selesai tidak boleh sebelum tanggal mulai.'; return; }
+
+    const checkedPhones = Array.from(document.querySelectorAll('#exportEmpList input[type=checkbox]:checked')).map((c) => c.dataset.phone);
+    const allChecked = document.getElementById('exportAllChk').checked;
+    if (!allChecked && checkedPhones.length === 0) { statusEl.textContent = 'Pilih minimal satu karyawan.'; return; }
+    const employeesParam = allChecked ? '' : `&employees=${encodeURIComponent(checkedPhones.join(','))}`;
+
     statusEl.textContent = 'Menyiapkan file...';
     try {
-      const res = await fetch(`/api/records/export?from=${from}&to=${to}&mode=${mode}`, { headers: authHeaders() });
+      const res = await fetch(`/api/records/export?from=${from}&to=${to}&mode=${mode}&format=${format}${employeesParam}`, { headers: authHeaders() });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         statusEl.textContent = err.error || 'Gagal membuat file export.';
@@ -454,7 +483,7 @@ document.getElementById('monthInput').addEventListener('change', loadMonthly);
       const blob = await res.blob();
       const disposition = res.headers.get('Content-Disposition') || '';
       const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match ? match[1] : `rekap-absensi-${from}_${to}.csv`;
+      const filename = match ? match[1] : `rekap-absensi-${from}_${to}.${format}`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = filename;
@@ -466,6 +495,52 @@ document.getElementById('monthInput').addEventListener('change', loadMonthly);
     }
   });
 })();
+
+// ---- Daftar karyawan dengan checkbox untuk Export Rekap ----
+function updateExportSelectedCount() {
+  const allChk = document.getElementById('exportAllChk');
+  const checks = Array.from(document.querySelectorAll('#exportEmpList input[type=checkbox]'));
+  const checkedCount = checks.filter((c) => c.checked).length;
+  document.getElementById('exportSelectedCount').textContent = allChk.checked
+    ? `Semua karyawan (${checks.length}) dipilih`
+    : `${checkedCount} dari ${checks.length} karyawan dipilih`;
+}
+
+function renderExportEmpList() {
+  const container = document.getElementById('exportEmpList');
+  const allChk = document.getElementById('exportAllChk');
+  container.innerHTML = '';
+  const employees = currentEmployees.filter((e) => e.phone && e.name);
+  employees.forEach((emp) => {
+    const row = document.createElement('label');
+    row.className = 'emp-check-row';
+    const photoSrc = emp.phone ? `/api/employee-photo/${encodeURIComponent(emp.phone)}?t=${token}` : '';
+    row.innerHTML = `
+      <input type="checkbox" data-phone="${emp.phone}" checked />
+      <img class="emp-avatar-sm" src="${photoSrc}" onerror="this.style.visibility='hidden'" />
+      <div>
+        <div>${emp.name}</div>
+        <div class="emp-check-meta">${emp.position || ''}</div>
+      </div>
+    `;
+    container.appendChild(row);
+  });
+
+  container.querySelectorAll('input[type=checkbox]').forEach((chk) => {
+    chk.addEventListener('change', () => {
+      const all = Array.from(container.querySelectorAll('input[type=checkbox]'));
+      allChk.checked = all.every((c) => c.checked);
+      updateExportSelectedCount();
+    });
+  });
+
+  allChk.onchange = () => {
+    container.querySelectorAll('input[type=checkbox]').forEach((c) => { c.checked = allChk.checked; });
+    updateExportSelectedCount();
+  };
+
+  updateExportSelectedCount();
+}
 
 async function loadDaily() {
   const date = document.getElementById('dateInput').value;
@@ -882,6 +957,7 @@ async function loadConfig() {
   currentLocations.forEach((loc) => { if (!Array.isArray(loc.shifts)) loc.shifts = []; });
   renderEmpList();
   renderLocList();
+  renderExportEmpList();
 
   document.getElementById('cfgUangMakan').value = cfg.uangMakanPerHari ?? 7000;
   document.getElementById('cfgUangTransport').value = cfg.uangTransportPerHari ?? 5000;

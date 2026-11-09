@@ -479,6 +479,160 @@ function hashPassword(pw) {
   return crypto.createHash('sha256').update(String(pw)).digest('hex');
 }
 
+// ---- Penulis file .xlsx minimal (tanpa dependency npm tambahan) ----
+// Dipakai untuk fitur export rekap absensi ke Excel. Membuat file .xlsx (ZIP berisi
+// XML OOXML) langsung dengan Node bawaan: ZIP disimpan tanpa kompresi (method STORE)
+// supaya tidak perlu library zip/deflate pihak ketiga.
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+function crc32(buf) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc = CRC32_TABLE[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date) {
+  const time = ((date.getHours() & 0x1f) << 11) | ((date.getMinutes() & 0x3f) << 5) | ((date.getSeconds() >> 1) & 0x1f);
+  const dateVal = (((date.getFullYear() - 1980) & 0x7f) << 9) | (((date.getMonth() + 1) & 0xf) << 5) | (date.getDate() & 0x1f);
+  return { time, dateVal };
+}
+
+// files: [{ name, data: Buffer }] -> Buffer berisi file .zip (tanpa kompresi, cukup untuk dibaca Excel/OOXML).
+function buildZipStore(files) {
+  const now = new Date();
+  const { time, dateVal } = dosDateTime(now);
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  files.forEach((f) => {
+    const nameBuf = Buffer.from(f.name, 'utf8');
+    const data = f.data;
+    const crc = crc32(data);
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4); // versi minimum
+    localHeader.writeUInt16LE(0, 6); // flags
+    localHeader.writeUInt16LE(0, 8); // method = 0 (store)
+    localHeader.writeUInt16LE(time, 10);
+    localHeader.writeUInt16LE(dateVal, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(data.length, 18);
+    localHeader.writeUInt32LE(data.length, 22);
+    localHeader.writeUInt16LE(nameBuf.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    localParts.push(localHeader, nameBuf, data);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(time, 12);
+    centralHeader.writeUInt16LE(dateVal, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(data.length, 20);
+    centralHeader.writeUInt32LE(data.length, 24);
+    centralHeader.writeUInt16LE(nameBuf.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralParts.push(centralHeader, nameBuf);
+
+    offset += localHeader.length + nameBuf.length + data.length;
+  });
+
+  const centralDirStart = offset;
+  const centralDir = Buffer.concat(centralParts);
+  const centralDirSize = centralDir.length;
+
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(centralDirSize, 12);
+  eocd.writeUInt32LE(centralDirStart, 16);
+  eocd.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, centralDir, eocd]);
+}
+
+function xmlEscape(v) {
+  return String(v === undefined || v === null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function colLetter(idx) {
+  let n = idx + 1, s = '';
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+// sheets: [{ name, rows }], rows: array of array of cell (string | number). Nama sheet maks 31 karakter.
+function buildXlsx(sheets) {
+  const files = [];
+  files.push({ name: '[Content_Types].xml', data: Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+    `<Default Extension="xml" ContentType="application/xml"/>` +
+    `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+    sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') +
+    `</Types>`, 'utf8') });
+
+  files.push({ name: '_rels/.rels', data: Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+    `</Relationships>`, 'utf8') });
+
+  files.push({ name: 'xl/workbook.xml', data: Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+    `<sheets>` + sheets.map((s, i) => `<sheet name="${xmlEscape(s.name.slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + `</sheets>` +
+    `</workbook>`, 'utf8') });
+
+  files.push({ name: 'xl/_rels/workbook.xml.rels', data: Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') +
+    `</Relationships>`, 'utf8') });
+
+  sheets.forEach((sheet, idx) => {
+    const rowsXml = sheet.rows.map((row, rIdx) => {
+      const cells = row.map((cell, cIdx) => {
+        const ref = colLetter(cIdx) + (rIdx + 1);
+        if (typeof cell === 'number' && isFinite(cell)) {
+          return `<c r="${ref}"><v>${cell}</v></c>`;
+        }
+        return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(cell)}</t></is></c>`;
+      }).join('');
+      return `<row r="${rIdx + 1}">${cells}</row>`;
+    }).join('');
+    files.push({ name: `xl/worksheets/sheet${idx + 1}.xml`, data: Buffer.from(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowsXml}</sheetData></worksheet>`, 'utf8') });
+  });
+
+  return buildZipStore(files);
+}
+
 // Kunci laporan: diturunkan dari password admin, supaya tidak perlu disimpan
 // terpisah. Otomatis berubah kalau password admin diganti.
 function reportKey(config) {
@@ -953,22 +1107,26 @@ const server = http.createServer(async (req, res) => {
       const from = url.searchParams.get('from');
       const to = url.searchParams.get('to');
       const mode = url.searchParams.get('mode') === 'detail' ? 'detail' : 'summary';
+      const format = url.searchParams.get('format') === 'csv' ? 'csv' : 'xlsx';
+      // Filter karyawan opsional: daftar nomor telepon dipisah koma. Kosong/tidak diisi = semua karyawan.
+      const phonesParam = (url.searchParams.get('employees') || '').trim();
+      const selectedPhones = phonesParam ? phonesParam.split(',').map((s) => s.trim()).filter(Boolean) : null;
       if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from dan to (YYYY-MM-DD) wajib diisi' });
       if (to < from) return sendJSON(res, 400, { error: 'Tanggal selesai tidak boleh sebelum tanggal mulai' });
 
-      const records = readJSON(RECORDS_FILE)
-        .filter((r) => r.dateKey >= from && r.dateKey <= to)
-        .sort((a, b) => (a.dateKey + a.timeHHMM).localeCompare(b.dateKey + b.timeHHMM));
-
-      const esc = (v) => {
-        const s = String(v === undefined || v === null ? '' : v);
-        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-      };
       const empMeta = {};
       config.employees.forEach((e) => { empMeta[e.name] = e; });
+      const selectedEmployees = selectedPhones
+        ? config.employees.filter((e) => selectedPhones.includes(e.phone))
+        : config.employees;
+      const selectedNames = new Set(selectedEmployees.map((e) => e.name));
 
-      let lines;
-      let filename;
+      const records = readJSON(RECORDS_FILE)
+        .filter((r) => r.dateKey >= from && r.dateKey <= to)
+        .filter((r) => !selectedPhones || selectedNames.has(r.employee))
+        .sort((a, b) => (a.dateKey + a.timeHHMM).localeCompare(b.dateKey + b.timeHHMM));
+
+      let headerRow, dataRows, filenameBase;
 
       if (mode === 'detail') {
         // Satu baris per karyawan per tanggal (Jam Masuk/Pulang/Lembur Masuk/Lembur Pulang sekaligus).
@@ -979,9 +1137,8 @@ const server = http.createServer(async (req, res) => {
           if (!byKey[key]) { byKey[key] = { employee: r.employee, dateKey: r.dateKey }; order.push(key); }
           byKey[key][r.type] = r;
         });
-        const cols = ['Nama', 'No ID', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Lembur Masuk', 'Lembur Pulang', 'Lokasi', 'Shift', 'Keterangan'];
-        lines = [cols.map(esc).join(',')];
-        order.forEach((key) => {
+        headerRow = ['Nama', 'No ID', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Lembur Masuk', 'Lembur Pulang', 'Lokasi', 'Shift', 'Keterangan'];
+        dataRows = order.map((key) => {
           const g = byKey[key];
           const ref = g.masuk || g.keluar || g.lembur_masuk || g.lembur_keluar;
           const emp = empMeta[g.employee] || {};
@@ -989,23 +1146,24 @@ const server = http.createServer(async (req, res) => {
           const startTime = (g.masuk && g.masuk.shiftStart) || config.workStartTime;
           const terlambat = g.masuk && startTime && g.masuk.timeHHMM > startTime;
           const keterangan = [terlambat ? 'Terlambat' : '', anyInvalid ? 'Di luar radius' : ''].filter(Boolean).join('; ');
-          lines.push([
+          return [
             g.employee, emp.idNumber || '', g.dateKey,
             g.masuk ? g.masuk.timeHHMM : '', g.keluar ? g.keluar.timeHHMM : '',
             g.lembur_masuk ? g.lembur_masuk.timeHHMM : '', g.lembur_keluar ? g.lembur_keluar.timeHHMM : '',
             ref ? (ref.nearestLocation || '') : '', ref ? (ref.shift || '') : '', keterangan,
-          ].map(esc).join(','));
+          ];
         });
-        filename = `detail-absensi-${from}_${to}.csv`;
+        filenameBase = `detail-absensi-${from}_${to}`;
       } else {
         // Ringkasan per karyawan (hari hadir, terlambat, di luar radius, lembur jam) untuk rentang tanggal.
         const lemburMap = computeLemburByEmployeeDate(records);
         const byEmployee = {};
-        for (const emp of config.employees) {
+        for (const emp of selectedEmployees) {
           byEmployee[emp.name] = { employee: emp.name, idNumber: emp.idNumber || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
         }
         for (const r of records) {
           if (!byEmployee[r.employee]) {
+            if (selectedPhones && !selectedNames.has(r.employee)) continue;
             byEmployee[r.employee] = { employee: r.employee, idNumber: (empMeta[r.employee] && empMeta[r.employee].idNumber) || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
           }
           const e = byEmployee[r.employee];
@@ -1019,23 +1177,35 @@ const server = http.createServer(async (req, res) => {
           const [employee] = key.split('|');
           if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key];
         }
-        const cols = ['Nama', 'No ID', 'Hari Hadir', 'Total Catatan Absen', 'Terlambat (kali)', 'Di Luar Radius', 'Lembur (jam)'];
-        lines = [cols.map(esc).join(',')];
-        Object.values(byEmployee).forEach((e) => {
-          lines.push([
-            e.employee, e.idNumber, e.hariHadir.size, e.totalAbsen, e.terlambat, e.diLuarRadius,
-            Math.round((e.lemburMenit / 60) * 10) / 10,
-          ].map(esc).join(','));
-        });
-        filename = `rekap-absensi-${from}_${to}.csv`;
+        headerRow = ['Nama', 'No ID', 'Hari Hadir', 'Total Catatan Absen', 'Terlambat (kali)', 'Di Luar Radius', 'Lembur (jam)'];
+        dataRows = Object.values(byEmployee).map((e) => [
+          e.employee, e.idNumber, e.hariHadir.size, e.totalAbsen, e.terlambat, e.diLuarRadius,
+          Math.round((e.lemburMenit / 60) * 10) / 10,
+        ]);
+        filenameBase = `rekap-absensi-${from}_${to}`;
       }
 
-      const csv = '﻿' + lines.join('\r\n'); // BOM biar Excel baca UTF-8 dengan benar
+      if (format === 'csv') {
+        const esc = (v) => {
+          const s = String(v === undefined || v === null ? '' : v);
+          return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        };
+        const lines = [headerRow, ...dataRows].map((row) => row.map(esc).join(','));
+        const csv = '﻿' + lines.join('\r\n'); // BOM biar Excel baca UTF-8 dengan benar
+        res.writeHead(200, {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${filenameBase}.csv"`,
+        });
+        return res.end(csv);
+      }
+
+      // Default: file Excel (.xlsx), satu sheet berisi header + data.
+      const xlsxBuffer = buildXlsx([{ name: mode === 'detail' ? 'Detail Absensi' : 'Rekap Absensi', rows: [headerRow, ...dataRows] }]);
       res.writeHead(200, {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${filenameBase}.xlsx"`,
       });
-      return res.end(csv);
+      return res.end(xlsxBuffer);
     }
 
     // ---- Rekap gaji untuk admin (rentang tanggal bebas, biasanya periode gajian 26 - 25) ----
