@@ -42,6 +42,14 @@
   }
   .shift-option:active { background: #e8f0fe; border-color: #1a73e8; }
   .shift-option .shift-time { display:block; font-size: 13px; color: #666; margin-top: 2px; }
+  .hist-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eee; font-size:14px; }
+  .hist-row:last-child { border-bottom: none; }
+  .hist-left { display:flex; flex-direction:column; }
+  .hist-date { font-weight:600; font-size:13px; color:#333; }
+  .hist-type { font-size:12px; color:#666; }
+  .hist-badge { padding:3px 9px; border-radius:10px; font-size:11px; font-weight:700; }
+  .hist-badge.ok { background:#e6f4ea; color:#137333; }
+  .hist-badge.bad { background:#fce8e6; color:#c5221f; }
 </style>
 </head>
 <body>
@@ -68,6 +76,7 @@
     <img id="preview" class="preview" />
 
     <div class="status" id="actionStatus"></div>
+    <button class="btn btn-secondary" id="btnRiwayat">Lihat Riwayat Absensi Saya</button>
     <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
   </div>
 
@@ -76,6 +85,15 @@
     <label>Pilih Shift Anda Hari Ini</label>
     <div id="shiftOptions"></div>
     <button class="btn btn-secondary" id="batalShift">Batal</button>
+  </div>
+
+  <div class="card" id="historyCard" style="display:none">
+    <div class="sub">Riwayat Absensi: <span class="name-tag" id="historyEmpName"></span></div>
+    <input type="month" id="historyMonthInput" style="width:100%;padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:16px;margin-bottom:14px" />
+    <div id="historyLemburInfo" class="hint" style="margin-bottom:10px"></div>
+    <div id="historyList"></div>
+    <div class="hint" id="historyEmpty"></div>
+    <button class="btn btn-secondary" id="tutupRiwayat" style="margin-top:10px">Tutup</button>
   </div>
 
   <div class="muted" style="text-align:center">
@@ -135,6 +153,63 @@ document.getElementById('gantiNomor').addEventListener('click', () => {
   preview.style.display = 'none';
   actionStatus.style.display = 'none';
 });
+
+// ---- Riwayat Absensi Saya ----
+const historyCard = document.getElementById('historyCard');
+const historyMonthInput = document.getElementById('historyMonthInput');
+const historyList = document.getElementById('historyList');
+const historyEmpty = document.getElementById('historyEmpty');
+const historyLemburInfo = document.getElementById('historyLemburInfo');
+
+document.getElementById('btnRiwayat').addEventListener('click', () => {
+  document.getElementById('historyEmpName').textContent = empName.textContent;
+  historyMonthInput.value = new Date().toISOString().slice(0, 7);
+  actionCard.style.display = 'none';
+  historyCard.style.display = 'block';
+  loadHistory();
+});
+
+document.getElementById('tutupRiwayat').addEventListener('click', () => {
+  historyCard.style.display = 'none';
+  actionCard.style.display = 'block';
+});
+
+historyMonthInput.addEventListener('change', loadHistory);
+
+async function loadHistory() {
+  historyList.innerHTML = '';
+  historyEmpty.textContent = 'Memuat...';
+  historyLemburInfo.textContent = '';
+  try {
+    const month = historyMonthInput.value;
+    const res = await fetch(`/api/my-records?phone=${encodeURIComponent(currentPhone)}&month=${month}`);
+    const data = await res.json();
+    if (!res.ok) { historyEmpty.textContent = data.error || 'Gagal memuat riwayat'; return; }
+
+    if (data.totalLemburJam > 0) {
+      historyLemburInfo.textContent = `Total lembur bulan ini: ${data.totalLemburJam} jam`;
+    }
+    if (!data.records || data.records.length === 0) {
+      historyEmpty.textContent = 'Belum ada riwayat absen di bulan ini.';
+      return;
+    }
+    historyEmpty.textContent = '';
+    data.records.forEach((r) => {
+      const row = document.createElement('div');
+      row.className = 'hist-row';
+      row.innerHTML = `
+        <div class="hist-left">
+          <span class="hist-date">${r.dateKey}</span>
+          <span class="hist-type">${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB${r.shift ? ' • ' + r.shift : ''} • ${r.nearestLocation || ''}</span>
+        </div>
+        <span class="hist-badge ${r.withinRadius ? 'ok' : 'bad'}">${r.withinRadius ? 'Valid' : r.distanceMeters + 'm'}</span>
+      `;
+      historyList.appendChild(row);
+    });
+  } catch (e) {
+    historyEmpty.textContent = 'Gagal memuat riwayat: ' + e.message;
+  }
+}
 
 function getLocation() {
   return new Promise((resolve, reject) => {

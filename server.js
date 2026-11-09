@@ -285,6 +285,31 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { name: emp.name });
     }
 
+    // ---- Riwayat absensi milik karyawan sendiri (identifikasi pakai nomor telepon, tanpa login admin) ----
+    if (pathName === '/api/my-records' && req.method === 'GET') {
+      const phone = String(url.searchParams.get('phone') || '').trim();
+      const month = url.searchParams.get('month') || dateKeyJakarta(new Date().toISOString()).slice(0, 7);
+      const emp = config.employees.find((e) => e.phone === phone);
+      if (!emp) return sendJSON(res, 404, { error: 'Nomor telepon tidak terdaftar' });
+
+      const records = readJSON(RECORDS_FILE)
+        .filter((r) => r.phone === phone && r.dateKey.startsWith(month))
+        .sort((a, b) => (a.dateKey + a.timeHHMM < b.dateKey + b.timeHHMM ? 1 : -1)); // terbaru dulu
+
+      const lemburMap = computeLemburByEmployeeDate(records);
+      const result = records.map((r) => ({
+        dateKey: r.dateKey,
+        timeHHMM: r.timeHHMM,
+        type: r.type,
+        shift: r.shift,
+        nearestLocation: r.nearestLocation,
+        withinRadius: r.withinRadius,
+        distanceMeters: r.distanceMeters,
+      }));
+      const totalLemburJam = Math.round((Object.values(lemburMap).reduce((a, b) => a + b, 0) / 60) * 10) / 10;
+      return sendJSON(res, 200, { name: emp.name, month, records: result, totalLemburJam });
+    }
+
     // ---- Lokasi terdekat + daftar shift lokasi itu (dipakai saat absen masuk) ----
     if (pathName === '/api/nearest-location' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
