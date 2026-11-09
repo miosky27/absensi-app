@@ -45,6 +45,7 @@
   .badge.rejected { background:#fce8e6; color:#c5221f; }
   .badge.lunas { background:#e6f4ea; color:#137333; }
   .badge.disetujui { background:#e3eefc; color:#1a56b0; }
+  .badge.ditolak { background:#fce8e6; color:#c5221f; }
   .badge.aktif { background:#e6f4ea; color:#137333; }
   .badge.nonaktif { background:#eceff1; color:#777; }
   .thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; cursor: pointer; }
@@ -90,7 +91,8 @@
   @media (max-width: 760px) {
     .app-shell { flex-direction:column; }
     .sidebar { width:100%; flex-direction:row; overflow-x:auto; padding:8px; position:fixed; bottom:0; left:0; z-index:40; box-shadow:0 -2px 8px rgba(0,0,0,0.15); }
-    .sidebar-brand, .side-logout { display:none; }
+    .sidebar-brand { display:none; }
+    .side-logout { color:#f3b6b6; }
     .side-item { flex-direction:column; gap:2px; font-size:10px; padding:8px 10px; white-space:nowrap; }
     .side-item .ic { font-size:18px; }
     .main-content { padding:16px 14px 90px; max-width:100%; }
@@ -708,13 +710,58 @@ async function loadKasbon() {
       <td><span class="badge ${k.status}">${k.status}</span></td>
       <td>
         ${k.status === 'pending' ? `<button class="btn secondary small" type="button" data-kapprove="${k.id}">Setujui</button>` : ''}
+        ${k.status === 'pending' ? `<button class="btn small" type="button" data-kreject="${k.id}" style="background:#f3b6b6;">Tolak</button>` : ''}
         ${canBayar ? `<button class="btn small" type="button" data-kbayar="${k.id}" data-jenis="${k.jenis}" data-sisa="${k.sisa}" data-cicilan="${k.cicilanPerBulan || ''}">Bayar</button>` : ''}
+        <button class="btn secondary small" type="button" data-kedit="${k.id}" data-jenis="${k.jenis}" data-jumlah="${k.jumlah}" data-cicilan="${k.cicilanPerBulan || ''}" data-catatan="${(k.catatan || '').replace(/"/g, '&quot;')}">Edit</button>
+        <button class="btn small" type="button" data-kdelete="${k.id}" style="background:#e58a8a;">Hapus</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
   tbody.querySelectorAll('[data-kapprove]').forEach((btn) => {
     btn.addEventListener('click', async () => { await fetch(`/api/kasbon/${btn.dataset.kapprove}/approve`, { method: 'POST', headers: authHeaders() }); loadKasbon(); });
+  });
+  tbody.querySelectorAll('[data-kreject]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Tolak pengajuan kasbon ini?')) return;
+      await fetch(`/api/kasbon/${btn.dataset.kreject}/reject`, { method: 'POST', headers: authHeaders() });
+      loadKasbon();
+    });
+  });
+  tbody.querySelectorAll('[data-kedit]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.kedit;
+      let jenis = btn.dataset.jenis;
+      const jenisInput = prompt('Jenis kasbon (cicil / potlang):', jenis);
+      if (jenisInput === null) return;
+      jenis = jenisInput.trim().toLowerCase() === 'potlang' ? 'potlang' : 'cicil';
+      const jumlahInput = prompt('Jumlah kasbon (Rp):', btn.dataset.jumlah);
+      if (jumlahInput === null) return;
+      const jumlah = Number(jumlahInput) || 0;
+      if (jumlah <= 0) { alert('Jumlah tidak valid.'); return; }
+      let cicilanPerBulan = null;
+      if (jenis === 'cicil') {
+        const cicilanInput = prompt('Cicilan per bulan (Rp):', btn.dataset.cicilan || '');
+        if (cicilanInput === null) return;
+        cicilanPerBulan = Number(cicilanInput) || 0;
+        if (cicilanPerBulan <= 0) { alert('Cicilan per bulan tidak valid.'); return; }
+      }
+      const catatanInput = prompt('Catatan (opsional):', btn.dataset.catatan || '');
+      const body = { jenis, jumlah, catatan: catatanInput || '' };
+      if (jenis === 'cicil') body.cicilanPerBulan = cicilanPerBulan;
+      const res = await fetch(`/api/kasbon/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal mengubah kasbon.'); return; }
+      loadKasbon();
+    });
+  });
+  tbody.querySelectorAll('[data-kdelete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Hapus data kasbon ini? Tindakan ini tidak bisa dibatalkan.')) return;
+      await fetch(`/api/kasbon/${btn.dataset.kdelete}`, { method: 'DELETE', headers: authHeaders() });
+      loadKasbon();
+    });
   });
   tbody.querySelectorAll('[data-kbayar]').forEach((btn) => {
     btn.addEventListener('click', async () => {

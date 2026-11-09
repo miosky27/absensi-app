@@ -20,6 +20,7 @@ const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const LEAVES_FILE = path.join(DATA_DIR, 'leaves.json'); // pengajuan izin/cuti
 const KASBON_FILE = path.join(DATA_DIR, 'kasbon.json'); // pinjaman karyawan
 const KASBON_PAYMENTS_FILE = path.join(DATA_DIR, 'kasbon_payments.json'); // cicilan/pelunasan kasbon
+const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json'); // pemberitahuan untuk karyawan (status cuti/kasbon dll)
 
 const PORT = process.env.PORT || 3000;
 
@@ -34,6 +35,7 @@ ensureFile(RECORDS_FILE, []);
 ensureFile(LEAVES_FILE, []);
 ensureFile(KASBON_FILE, []);
 ensureFile(KASBON_PAYMENTS_FILE, []);
+ensureFile(NOTIFICATIONS_FILE, []);
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
   // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
@@ -483,6 +485,17 @@ function reportKey(config) {
   return crypto.createHash('sha256').update(config.adminPassword + ':report-key').digest('hex').slice(0, 24);
 }
 
+// Buat notifikasi baru untuk karyawan (dipakai saat admin approve/reject cuti & kasbon).
+function addNotification(phone, message, type) {
+  const notifications = readJSON(NOTIFICATIONS_FILE);
+  notifications.push({
+    id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    phone, message, type: type || 'info', read: false,
+    createdAt: new Date().toISOString(),
+  });
+  writeJSON(NOTIFICATIONS_FILE, notifications);
+}
+
 // ---------- Static file serving ----------
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -550,7 +563,7 @@ const server = http.createServer(async (req, res) => {
     // CORS (untuk kemudahan jika frontend dipisah)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       return res.end();
@@ -1146,6 +1159,7 @@ const server = http.createServer(async (req, res) => {
       if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
       l.status = 'approved'; l.reviewedAt = new Date().toISOString();
       writeJSON(LEAVES_FILE, leaves);
+      addNotification(l.phone, 'Pengajuan Cuti/Ijin Anda telah diterima.', 'leave_approved');
       return sendJSON(res, 200, { ok: true });
     }
     if (pathName.startsWith('/api/leaves/') && pathName.endsWith('/reject') && req.method === 'POST') {
@@ -1156,6 +1170,7 @@ const server = http.createServer(async (req, res) => {
       if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
       l.status = 'rejected'; l.reviewedAt = new Date().toISOString();
       writeJSON(LEAVES_FILE, leaves);
+      addNotification(l.phone, 'Pengajuan Cuti/Ijin Anda telah ditolak.', 'leave_rejected');
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -1217,6 +1232,59 @@ const server = http.createServer(async (req, res) => {
       if (!k) return sendJSON(res, 404, { error: 'Kasbon tidak ditemukan' });
       k.status = 'disetujui';
       writeJSON(KASBON_FILE, kasbonList);
+      addNotification(k.phone, 'Pengajuan Kasbon Anda telah diterima.', 'kasbon_approved');
+      return sendJSON(res, 200, { ok: true });
+    }
+    // Admin: tolak pengajuan kasbon.
+    if (pathName.startsWith('/api/kasbon/') && pathName.endsWith('/reject') && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const kasbonList = readJSON(KASBON_FILE);
+      const k = kasbonList.find((x) => x.id === id);
+      if (!k) return sendJSON(res, 404, { error: 'Kasbon tidak ditemukan' });
+      k.status = 'ditolak';
+      writeJSON(KASBON_FILE, kasbonList);
+      addNotification(k.phone, 'Pengajuan Kasbon Anda telah ditolak.', 'kasbon_rejected');
+      return sendJSON(res, 200, { ok: true });
+    }
+    // Admin: edit data kasbon (perbaikan kesalahan input).
+    if (pathName.startsWith('/api/kasbon/') && pathName.split('/').length === 4 && req.method === 'PUT') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const kasbonList = readJSON(KASBON_FILE);
+      const k = kasbonList.find((x) => x.id === id);
+      if (!k) return sendJSON(res, 404, { error: 'Kasbon tidak ditemukan' });
+      if (body.jenis && ['cicil', 'potlang'].includes(body.jenis)) k.jenis = body.jenis;
+      if (body.jumlah !== undefined) {
+        const jml = Number(body.jumlah);
+        if (!jml || jml <= 0) return sendJSON(res, 400, { error: 'Jumlah pinjaman harus lebih dari 0.' });
+        k.jumlah = jml;
+      }
+      if (k.jenis === 'cicil') {
+        if (body.cicilanPerBulan !== undefined) {
+          const cicilan = Number(body.cicilanPerBulan);
+          if (!cicilan || cicilan <= 0) return sendJSON(res, 400, { error: 'Cicilan per bulan harus lebih dari 0.' });
+          k.cicilanPerBulan = cicilan;
+        }
+      } else {
+        k.cicilanPerBulan = null;
+      }
+      if (body.catatan !== undefined) k.catatan = body.catatan;
+      writeJSON(KASBON_FILE, kasbonList);
+      return sendJSON(res, 200, { ok: true, kasbon: k });
+    }
+    // Admin: hapus data kasbon (beserta histori pembayarannya).
+    if (pathName.startsWith('/api/kasbon/') && pathName.split('/').length === 4 && req.method === 'DELETE') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      let kasbonList = readJSON(KASBON_FILE);
+      const exists = kasbonList.find((x) => x.id === id);
+      if (!exists) return sendJSON(res, 404, { error: 'Kasbon tidak ditemukan' });
+      kasbonList = kasbonList.filter((x) => x.id !== id);
+      writeJSON(KASBON_FILE, kasbonList);
+      const payments = readJSON(KASBON_PAYMENTS_FILE).filter((p) => p.kasbonId !== id);
+      writeJSON(KASBON_PAYMENTS_FILE, payments);
       return sendJSON(res, 200, { ok: true });
     }
     // Admin: catat pembayaran/cicilan kasbon (dipotong dari gaji atau dibayar manual).
