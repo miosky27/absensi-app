@@ -640,6 +640,62 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { month, text, summary });
     }
 
+    // ---- Rekap untuk rentang tanggal bebas (dipakai untuk periode gajian, misalnya 26 - 25) ----
+    // Dilindungi report key, bukan token admin, supaya bisa dipanggil otomatis oleh scheduled task.
+    if (pathName === '/api/period-report' && req.method === 'GET') {
+      const key = url.searchParams.get('key');
+      if (key !== reportKey(config)) return sendJSON(res, 403, { error: 'Forbidden' });
+      const from = url.searchParams.get('from'); // YYYY-MM-DD
+      const to = url.searchParams.get('to'); // YYYY-MM-DD
+      if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from dan to (YYYY-MM-DD) wajib diisi' });
+
+      const records = readJSON(RECORDS_FILE)
+        .filter((r) => r.dateKey >= from && r.dateKey <= to)
+        .sort((a, b) => (a.dateKey + a.timeHHMM).localeCompare(b.dateKey + b.timeHHMM));
+
+      const lemburMap = computeLemburByEmployeeDate(records);
+      const byEmployee = {};
+      for (const emp of config.employees) {
+        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+      }
+      for (const r of records) {
+        if (!byEmployee[r.employee]) {
+          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+        }
+        const e = byEmployee[r.employee];
+        e.hariHadir.add(r.dateKey);
+        e.totalAbsen += 1;
+        if (!r.withinRadius) e.diLuarRadius += 1;
+        const startTime = r.shiftStart || config.workStartTime;
+        if (r.type === 'masuk' && startTime && r.timeHHMM > startTime) {
+          e.terlambat += 1;
+        }
+      }
+      for (const key2 of Object.keys(lemburMap)) {
+        const [employee] = key2.split('|');
+        if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key2];
+      }
+      const summary = Object.values(byEmployee).map((e) => ({
+        employee: e.employee,
+        hariHadir: e.hariHadir.size,
+        totalAbsen: e.totalAbsen,
+        diLuarRadius: e.diLuarRadius,
+        terlambat: e.terlambat,
+        lemburJam: Math.round((e.lemburMenit / 60) * 10) / 10,
+      }));
+
+      const detail = records.map((r) => ({
+        tanggal: r.dateKey,
+        jam: r.timeHHMM,
+        karyawan: r.employee,
+        tipe: r.type === 'masuk' ? 'Masuk' : 'Keluar',
+        shift: r.shift || '',
+        lokasi: r.nearestLocation || '',
+        validRadius: r.withinRadius ? 'Valid' : `Di luar radius (${r.distanceMeters} m)`,
+      }));
+
+      return sendJSON(res, 200, { from, to, summary, detail });
+    }
 
     if (pathName === '/api/config' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
