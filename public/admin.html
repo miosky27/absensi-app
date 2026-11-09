@@ -575,6 +575,9 @@ async function loadDaily() {
     const editBtn = (g, type) => emp.phone
       ? `<button class="btn secondary small" type="button" data-manualedit="${type}" data-phone="${emp.phone}" data-recid="${g[type] ? g[type].id : ''}" data-current="${g[type] ? g[type].timeHHMM : ''}" style="padding:2px 8px;font-size:11px;margin-left:4px">${g[type] ? 'Edit' : '+ Isi'}</button>`
       : '';
+    const deleteBtn = (g, type) => (g[type] && emp.phone)
+      ? `<button class="btn small" type="button" data-manualdelete="${g[type].id}" style="padding:2px 8px;font-size:11px;margin-left:4px;background:#f3b6b6;">Hapus</button>`
+      : '';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -583,10 +586,10 @@ async function loadDaily() {
         : `<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:#bbb;font-size:18px">—</div>`}</td>
       <td>${name}</td>
       <td>${emp.idNumber || '—'}</td>
-      <td>${g.masuk ? `${g.masuk.timeHHMM} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}${editBtn(g, 'masuk')}</td>
-      <td>${g.keluar ? `${g.keluar.timeHHMM} ${attendanceStatusBadge(g.keluar)}` : '—'}${editBtn(g, 'keluar')}</td>
-      <td>${g.lembur_masuk ? `${g.lembur_masuk.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_masuk')}</td>
-      <td>${g.lembur_keluar ? `${g.lembur_keluar.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_keluar')}</td>
+      <td>${g.masuk ? `${g.masuk.timeHHMM} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}${editBtn(g, 'masuk')}${deleteBtn(g, 'masuk')}</td>
+      <td>${g.keluar ? `${g.keluar.timeHHMM} ${attendanceStatusBadge(g.keluar)}` : '—'}${editBtn(g, 'keluar')}${deleteBtn(g, 'keluar')}</td>
+      <td>${g.lembur_masuk ? `${g.lembur_masuk.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_masuk')}${deleteBtn(g, 'lembur_masuk')}</td>
+      <td>${g.lembur_keluar ? `${g.lembur_keluar.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_keluar')}${deleteBtn(g, 'lembur_keluar')}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -617,6 +620,14 @@ async function loadDaily() {
         });
       }
       if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menyimpan jam absen.'); return; }
+      loadDaily();
+    });
+  });
+  tbody.querySelectorAll('[data-manualdelete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Hapus data absen ini? Tindakan ini tidak bisa dibatalkan.')) return;
+      const res = await fetch(`/api/records/${btn.dataset.manualdelete}`, { method: 'DELETE', headers: authHeaders() });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menghapus data absen.'); return; }
       loadDaily();
     });
   });

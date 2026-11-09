@@ -1061,6 +1061,18 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true, record: r });
     }
 
+    // Admin: hapus satu data absen (Masuk/Pulang/Lembur Masuk/Lembur Pulang) karena salah input.
+    if (pathName.startsWith('/api/records/') && pathName.split('/').length === 4 && req.method === 'DELETE') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      let records = readJSON(RECORDS_FILE);
+      const exists = records.find((x) => x.id === id);
+      if (!exists) return sendJSON(res, 404, { error: 'Data absen tidak ditemukan' });
+      records = records.filter((x) => x.id !== id);
+      writeJSON(RECORDS_FILE, records);
+      return sendJSON(res, 200, { ok: true });
+    }
+
     if (pathName === '/api/summary' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const month = url.searchParams.get('month'); // YYYY-MM
