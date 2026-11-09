@@ -231,6 +231,28 @@ function countDaysInclusive(from, to) {
   return Math.round((b - a) / 86400000) + 1;
 }
 
+// Periode gajian berjalan: tanggal 26 bulan lalu s.d. tanggal 25 bulan ini (WIB).
+function defaultPayrollPeriod() {
+  const todayKey = dateKeyJakarta(new Date().toISOString());
+  const [y, m, d] = todayKey.split('-').map(Number);
+  let toY = y, toM = m;
+  if (d < 26) {
+    // Sebelum tanggal 26: periode berjalan masih periode sebelumnya (berakhir tanggal 25 bulan ini).
+    toY = y; toM = m;
+  } else {
+    // Tanggal 26 ke atas: periode berjalan berakhir tanggal 25 bulan depan.
+    toM = m + 1;
+    if (toM > 12) { toM = 1; toY = y + 1; }
+  }
+  let fromY = toY, fromM = toM - 1;
+  if (fromM < 1) { fromM = 12; fromY = toY - 1; }
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    from: `${fromY}-${pad(fromM)}-26`,
+    to: `${toY}-${pad(toM)}-25`,
+  };
+}
+
 // Hitung rekap gaji per karyawan untuk satu periode (records sudah difilter ke rentang periode).
 function computePayrollSummary(records, config, from, to) {
   const totalHariPeriode = countDaysInclusive(from, to);
@@ -537,6 +559,27 @@ const server = http.createServer(async (req, res) => {
           masuk: todayMasuk ? todayMasuk.timeHHMM : null,
           keluar: todayKeluar ? todayKeluar.timeHHMM : null,
         },
+      });
+    }
+
+    // ---- Slip gaji milik karyawan sendiri (identifikasi pakai nomor telepon, tanpa login admin) ----
+    if (pathName === '/api/my-payslip' && req.method === 'GET') {
+      const phone = String(url.searchParams.get('phone') || '').trim();
+      const emp = config.employees.find((e) => e.phone === phone);
+      if (!emp) return sendJSON(res, 404, { error: 'Nomor telepon tidak terdaftar' });
+
+      const defaultPeriod = defaultPayrollPeriod();
+      const from = url.searchParams.get('from') || defaultPeriod.from;
+      const to = url.searchParams.get('to') || defaultPeriod.to;
+
+      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
+      const payroll = computePayrollSummary(records, config, from, to);
+      const slip = payroll.find((p) => p.employee === emp.name) || null;
+
+      return sendJSON(res, 200, {
+        from, to,
+        employee: { name: emp.name, idNumber: emp.idNumber || '', position: emp.position || '' },
+        slip,
       });
     }
 

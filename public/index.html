@@ -82,6 +82,53 @@
   .day-card .dc-row .dc-lbl { color:#666; }
   .day-card .dc-row .dc-time { font-weight:700; }
   .day-card .dc-meta { font-size:11px; color:#888; margin-top:6px; }
+
+  /* ---- Slip Gaji ---- */
+  .slip-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .slip-head .sh-title { font-weight:700; font-size:16px; color:#4a1843; }
+  .slip-period-nav { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+  .slip-period-nav button {
+    border:none; background:#f3ead8; color:#702464; font-size:16px; font-weight:700;
+    width:34px; height:34px; border-radius:50%; cursor:pointer; flex-shrink:0;
+  }
+  .slip-period-nav button:disabled { opacity:0.4; cursor:default; }
+  .slip-period-label { flex:1; text-align:center; font-size:13px; font-weight:600; color:#333; }
+  .slip-box { border:1.5px solid #e9ddf0; border-radius:14px; overflow:hidden; }
+  .slip-id-row {
+    display:flex; justify-content:space-between; gap:12px; background:#f8f3ea;
+    padding:14px 16px; font-size:13px; border-bottom:1.5px solid #e9ddf0;
+  }
+  .slip-id-row .si-label { color:#888; font-size:11px; }
+  .slip-id-row .si-value { font-weight:700; color:#2a1a26; margin-top:1px; }
+  .slip-cols { display:flex; }
+  .slip-col { flex:1; padding:14px 16px; }
+  .slip-col + .slip-col { border-left:1.5px solid #e9ddf0; }
+  .slip-col-title { font-size:12px; font-weight:800; letter-spacing:0.03em; color:#702464; margin-bottom:10px; }
+  .slip-line { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; padding:5px 0; gap:8px; }
+  .slip-line .sl-lbl { color:#555; }
+  .slip-line .sl-sub { color:#999; font-size:11px; }
+  .slip-line .sl-val { font-weight:600; color:#1a1a1a; text-align:right; white-space:nowrap; }
+  .slip-line.minus .sl-val { color:#c5221f; }
+  .slip-total-row {
+    display:flex; justify-content:space-between; font-size:13px; font-weight:800;
+    padding:10px 16px; background:#f8f3ea; border-top:1.5px solid #e9ddf0;
+  }
+  .slip-total-row.potongan .sl-val { color:#c5221f; }
+  .slip-bersih {
+    display:flex; justify-content:space-between; align-items:center; padding:16px;
+    background:linear-gradient(135deg,#8a3380,#5c1d52); color:#fff;
+  }
+  .slip-bersih .sb-lbl { font-size:12px; color:#f1dcec; font-weight:600; }
+  .slip-bersih .sb-val { font-size:20px; font-weight:800; }
+  .slip-note { font-size:11px; color:#999; text-align:center; margin-top:10px; }
+  .slip-empty { text-align:center; color:#888; font-size:13px; padding:30px 0; }
+
+  @media (max-width: 400px) {
+    .slip-id-row { flex-wrap:wrap; gap:10px 16px; }
+    .slip-cols { flex-direction:column; }
+    .slip-col + .slip-col { border-left:none; border-top:1.5px solid #e9ddf0; }
+    .slip-line .sl-lbl { white-space:nowrap; }
+  }
 </style>
 </head>
 <body>
@@ -136,7 +183,21 @@
     <div id="historyList"></div>
     <div class="hint" id="historyEmpty"></div>
 
-    <button class="btn btn-secondary" id="gantiNomor" style="margin-top:10px">Ganti Nomor</button>
+    <button class="btn btn-secondary" id="lihatSlipGaji" style="margin-top:4px">Lihat Slip Gaji</button>
+    <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
+  </div>
+
+  <div class="card" id="payslipCard" style="display:none">
+    <div class="slip-head">
+      <div class="sh-title">Slip Gaji</div>
+      <button class="btn btn-secondary" id="tutupSlip" style="width:auto; padding:8px 14px; margin:0; font-size:13px">Tutup</button>
+    </div>
+    <div class="slip-period-nav">
+      <button type="button" id="slipPrev" title="Periode sebelumnya">&#8249;</button>
+      <div class="slip-period-label" id="slipPeriodLabel">—</div>
+      <button type="button" id="slipNext" title="Periode berikutnya">&#8250;</button>
+    </div>
+    <div id="slipBody"></div>
   </div>
 
   <div class="card" id="shiftCard" style="display:none">
@@ -213,6 +274,119 @@ document.getElementById('gantiNomor').addEventListener('click', () => {
   phoneCard.style.display = 'block';
   preview.style.display = 'none';
   actionStatus.style.display = 'none';
+});
+
+// ---- Slip Gaji ----
+const payslipCard = document.getElementById('payslipCard');
+const slipBody = document.getElementById('slipBody');
+const slipPeriodLabel = document.getElementById('slipPeriodLabel');
+let slipFrom = null;
+let slipTo = null;
+
+function formatRupiah(n) {
+  const num = Number(n) || 0;
+  const sign = num < 0 ? '-' : '';
+  return sign + 'Rp' + Math.abs(Math.round(num)).toLocaleString('id-ID');
+}
+
+function fmtPeriodLabel(from, to) {
+  const opt = { day: 'numeric', month: 'long', year: 'numeric' };
+  const a = new Date(from + 'T00:00:00').toLocaleDateString('id-ID', opt);
+  const b = new Date(to + 'T00:00:00').toLocaleDateString('id-ID', opt);
+  return `${a} – ${b}`;
+}
+
+// Geser periode gajian (format 26 - 25) mundur/maju satu bulan.
+function shiftPayrollPeriod(to, deltaMonths) {
+  const [y, m] = to.split('-').map(Number); // 'to' selalu tanggal 25
+  const base = new Date(y, m - 1 + deltaMonths, 25);
+  const pad = (n) => String(n).padStart(2, '0');
+  const newTo = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-25`;
+  const prev = new Date(base.getFullYear(), base.getMonth() - 1, 26);
+  const newFrom = `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}-26`;
+  return { from: newFrom, to: newTo };
+}
+
+async function loadPayslip() {
+  slipPeriodLabel.textContent = slipFrom && slipTo ? fmtPeriodLabel(slipFrom, slipTo) : 'Memuat...';
+  slipBody.innerHTML = '<div class="slip-empty">Memuat slip gaji...</div>';
+  try {
+    const params = new URLSearchParams({ phone: currentPhone });
+    if (slipFrom) params.set('from', slipFrom);
+    if (slipTo) params.set('to', slipTo);
+    const res = await fetch(`/api/my-payslip?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok) { slipBody.innerHTML = `<div class="slip-empty">${data.error || 'Gagal memuat slip gaji'}</div>`; return; }
+
+    slipFrom = data.from; slipTo = data.to;
+    slipPeriodLabel.textContent = fmtPeriodLabel(data.from, data.to);
+
+    const s = data.slip;
+    if (!s) { slipBody.innerHTML = '<div class="slip-empty">Belum ada data gaji untuk periode ini.</div>'; return; }
+
+    const emp = data.employee;
+    slipBody.innerHTML = `
+      <div class="slip-box">
+        <div class="slip-id-row">
+          <div><div class="si-label">No ID</div><div class="si-value">${emp.idNumber || '—'}</div></div>
+          <div><div class="si-label">Nama</div><div class="si-value">${emp.name}</div></div>
+          <div><div class="si-label">Jabatan</div><div class="si-value">${emp.position || '—'}</div></div>
+        </div>
+        <div class="slip-cols">
+          <div class="slip-col">
+            <div class="slip-col-title">PENDAPATAN</div>
+            <div class="slip-line"><span class="sl-lbl">Gaji Pokok</span><span class="sl-val">${formatRupiah(s.gajiPokok)}</span></div>
+            <div class="slip-line"><span class="sl-lbl">Uang Makan</span><span class="sl-val">${formatRupiah(s.uangMakan)}</span></div>
+            <div class="slip-line"><span class="sl-lbl">Lembur Awal <span class="sl-sub">(${s.lemburAwalJam} j)</span></span><span class="sl-val">${formatRupiah(s.lemburAwalRp)}</span></div>
+            <div class="slip-line"><span class="sl-lbl">Lembur Akhir <span class="sl-sub">(${s.lemburAkhirJam} j)</span></span><span class="sl-val">${formatRupiah(s.lemburAkhirRp)}</span></div>
+          </div>
+          <div class="slip-col">
+            <div class="slip-col-title">POTONGAN</div>
+            <div class="slip-line minus"><span class="sl-lbl">Tidak Masuk <span class="sl-sub">(${s.offBerlebih} hr)</span></span><span class="sl-val">${formatRupiah(s.potonganOff)}</span></div>
+            <div class="slip-line minus"><span class="sl-lbl">Terlambat <span class="sl-sub">(${s.terlambatKali}x, ${s.terlambatJam} j)</span></span><span class="sl-val">${formatRupiah(s.potonganTerlambat)}</span></div>
+            <div class="slip-line minus"><span class="sl-lbl">Pulang Cepat <span class="sl-sub">(${s.pulangCepatJam} j)</span></span><span class="sl-val">${formatRupiah(s.potonganPulangCepat)}</span></div>
+          </div>
+        </div>
+        <div class="slip-total-row"><span>TOTAL PENDAPATAN</span><span class="sl-val">${formatRupiah(s.totalPendapatan)}</span></div>
+        <div class="slip-total-row potongan"><span>TOTAL POTONGAN</span><span class="sl-val">${formatRupiah(s.totalPotongan)}</span></div>
+        <div class="slip-total-row">
+          <span>Kerajinan ${s.kerajinanEligible ? '' : '<span class="sl-sub">(tidak memenuhi syarat)</span>'}</span>
+          <span class="sl-val">${formatRupiah(s.kerajinan)}</span>
+        </div>
+        <div class="slip-total-row"><span>Transport</span><span class="sl-val">${formatRupiah(s.uangTransport)}</span></div>
+        <div class="slip-bersih">
+          <span class="sb-lbl">GAJI BERSIH</span>
+          <span class="sb-val">${formatRupiah(s.gajiBersih)}</span>
+        </div>
+      </div>
+      <div class="slip-note">Hari hadir: ${s.hariHadir} • Dibuat otomatis oleh sistem absensi</div>
+    `;
+  } catch (e) {
+    slipBody.innerHTML = `<div class="slip-empty">Gagal memuat slip gaji: ${e.message}</div>`;
+  }
+}
+
+document.getElementById('lihatSlipGaji').addEventListener('click', () => {
+  slipFrom = null; slipTo = null;
+  actionCard.style.display = 'none';
+  payslipCard.style.display = 'block';
+  loadPayslip();
+});
+document.getElementById('tutupSlip').addEventListener('click', () => {
+  payslipCard.style.display = 'none';
+  actionCard.style.display = 'block';
+});
+document.getElementById('slipPrev').addEventListener('click', () => {
+  if (!slipTo) return;
+  const p = shiftPayrollPeriod(slipTo, -1);
+  slipFrom = p.from; slipTo = p.to;
+  loadPayslip();
+});
+document.getElementById('slipNext').addEventListener('click', () => {
+  if (!slipTo) return;
+  const p = shiftPayrollPeriod(slipTo, 1);
+  slipFrom = p.from; slipTo = p.to;
+  loadPayslip();
 });
 
 // ---- Riwayat & ringkasan absensi (bagian dari halaman utama) ----
