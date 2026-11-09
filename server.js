@@ -947,6 +947,97 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { month, summary, workStartTime: config.workStartTime });
     }
 
+    // ---- Export rekap absensi ke CSV untuk rentang tanggal bebas yang dipilih admin ----
+    if (pathName === '/api/records/export' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const mode = url.searchParams.get('mode') === 'detail' ? 'detail' : 'summary';
+      if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from dan to (YYYY-MM-DD) wajib diisi' });
+      if (to < from) return sendJSON(res, 400, { error: 'Tanggal selesai tidak boleh sebelum tanggal mulai' });
+
+      const records = readJSON(RECORDS_FILE)
+        .filter((r) => r.dateKey >= from && r.dateKey <= to)
+        .sort((a, b) => (a.dateKey + a.timeHHMM).localeCompare(b.dateKey + b.timeHHMM));
+
+      const esc = (v) => {
+        const s = String(v === undefined || v === null ? '' : v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      const empMeta = {};
+      config.employees.forEach((e) => { empMeta[e.name] = e; });
+
+      let lines;
+      let filename;
+
+      if (mode === 'detail') {
+        // Satu baris per karyawan per tanggal (Jam Masuk/Pulang/Lembur Masuk/Lembur Pulang sekaligus).
+        const byKey = {};
+        const order = [];
+        records.forEach((r) => {
+          const key = r.employee + '|' + r.dateKey;
+          if (!byKey[key]) { byKey[key] = { employee: r.employee, dateKey: r.dateKey }; order.push(key); }
+          byKey[key][r.type] = r;
+        });
+        const cols = ['Nama', 'No ID', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Lembur Masuk', 'Lembur Pulang', 'Lokasi', 'Shift', 'Keterangan'];
+        lines = [cols.map(esc).join(',')];
+        order.forEach((key) => {
+          const g = byKey[key];
+          const ref = g.masuk || g.keluar || g.lembur_masuk || g.lembur_keluar;
+          const emp = empMeta[g.employee] || {};
+          const anyInvalid = (g.masuk && !g.masuk.withinRadius) || (g.keluar && !g.keluar.withinRadius);
+          const startTime = (g.masuk && g.masuk.shiftStart) || config.workStartTime;
+          const terlambat = g.masuk && startTime && g.masuk.timeHHMM > startTime;
+          const keterangan = [terlambat ? 'Terlambat' : '', anyInvalid ? 'Di luar radius' : ''].filter(Boolean).join('; ');
+          lines.push([
+            g.employee, emp.idNumber || '', g.dateKey,
+            g.masuk ? g.masuk.timeHHMM : '', g.keluar ? g.keluar.timeHHMM : '',
+            g.lembur_masuk ? g.lembur_masuk.timeHHMM : '', g.lembur_keluar ? g.lembur_keluar.timeHHMM : '',
+            ref ? (ref.nearestLocation || '') : '', ref ? (ref.shift || '') : '', keterangan,
+          ].map(esc).join(','));
+        });
+        filename = `detail-absensi-${from}_${to}.csv`;
+      } else {
+        // Ringkasan per karyawan (hari hadir, terlambat, di luar radius, lembur jam) untuk rentang tanggal.
+        const lemburMap = computeLemburByEmployeeDate(records);
+        const byEmployee = {};
+        for (const emp of config.employees) {
+          byEmployee[emp.name] = { employee: emp.name, idNumber: emp.idNumber || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+        }
+        for (const r of records) {
+          if (!byEmployee[r.employee]) {
+            byEmployee[r.employee] = { employee: r.employee, idNumber: (empMeta[r.employee] && empMeta[r.employee].idNumber) || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+          }
+          const e = byEmployee[r.employee];
+          e.hariHadir.add(r.dateKey);
+          e.totalAbsen += 1;
+          if (!r.withinRadius) e.diLuarRadius += 1;
+          const startTime = r.shiftStart || config.workStartTime;
+          if (r.type === 'masuk' && startTime && r.timeHHMM > startTime) e.terlambat += 1;
+        }
+        for (const key of Object.keys(lemburMap)) {
+          const [employee] = key.split('|');
+          if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key];
+        }
+        const cols = ['Nama', 'No ID', 'Hari Hadir', 'Total Catatan Absen', 'Terlambat (kali)', 'Di Luar Radius', 'Lembur (jam)'];
+        lines = [cols.map(esc).join(',')];
+        Object.values(byEmployee).forEach((e) => {
+          lines.push([
+            e.employee, e.idNumber, e.hariHadir.size, e.totalAbsen, e.terlambat, e.diLuarRadius,
+            Math.round((e.lemburMenit / 60) * 10) / 10,
+          ].map(esc).join(','));
+        });
+        filename = `rekap-absensi-${from}_${to}.csv`;
+      }
+
+      const csv = '﻿' + lines.join('\r\n'); // BOM biar Excel baca UTF-8 dengan benar
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      });
+      return res.end(csv);
+    }
+
     // ---- Rekap gaji untuk admin (rentang tanggal bebas, biasanya periode gajian 26 - 25) ----
     if (pathName === '/api/payroll' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });

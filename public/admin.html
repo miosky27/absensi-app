@@ -247,6 +247,7 @@
         <div class="tabs">
           <div class="tab active" data-subtab="harian">Manajemen Absensi</div>
           <div class="tab" data-subtab="bulanan">Rekap Bulanan</div>
+          <div class="tab" data-subtab="export">Export Rekap</div>
         </div>
 
         <div id="sub-harian" class="card">
@@ -273,6 +274,20 @@
             <tbody></tbody>
           </table>
           </div>
+        </div>
+
+        <div id="sub-export" class="card" style="display:none">
+          <div class="hint" style="margin-bottom:14px">Unduh rekap absensi untuk rentang tanggal bebas sesuai kebutuhan Anda (misalnya periode gajian 26 - 25).</div>
+          <div class="field"><label>Dari Tanggal</label><input type="date" id="exportFrom" /></div>
+          <div class="field"><label>Sampai Tanggal</label><input type="date" id="exportTo" /></div>
+          <div class="field"><label>Jenis Rekap</label>
+            <select id="exportMode">
+              <option value="summary">Ringkasan per Karyawan (hari hadir, terlambat, lembur)</option>
+              <option value="detail">Detail Harian (jam masuk/pulang/lembur per tanggal)</option>
+            </select>
+          </div>
+          <button class="btn" type="button" id="exportDownloadBtn">Unduh CSV</button>
+          <div class="hint" id="exportStatus"></div>
         </div>
       </div>
 
@@ -404,7 +419,7 @@ document.querySelectorAll('#page-absensi .tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('#page-absensi .tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
-    ['harian','bulanan'].forEach((name) => {
+    ['harian','bulanan','export'].forEach((name) => {
       document.getElementById('sub-' + name).style.display = (name === tab.dataset.subtab) ? 'block' : 'none';
     });
   });
@@ -412,6 +427,45 @@ document.querySelectorAll('#page-absensi .tab').forEach((tab) => {
 
 document.getElementById('dateInput').addEventListener('change', loadDaily);
 document.getElementById('monthInput').addEventListener('change', loadMonthly);
+
+// ---- Export rekap absensi (CSV, rentang tanggal bebas) ----
+(function () {
+  const fromEl = document.getElementById('exportFrom');
+  const toEl = document.getElementById('exportTo');
+  const today = new Date().toISOString().slice(0, 10);
+  fromEl.value = today.slice(0, 8) + '01';
+  toEl.value = today;
+
+  document.getElementById('exportDownloadBtn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('exportStatus');
+    const from = fromEl.value;
+    const to = toEl.value;
+    const mode = document.getElementById('exportMode').value;
+    if (!from || !to) { statusEl.textContent = 'Tanggal mulai dan selesai wajib diisi.'; return; }
+    if (to < from) { statusEl.textContent = 'Tanggal selesai tidak boleh sebelum tanggal mulai.'; return; }
+    statusEl.textContent = 'Menyiapkan file...';
+    try {
+      const res = await fetch(`/api/records/export?from=${from}&to=${to}&mode=${mode}`, { headers: authHeaders() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        statusEl.textContent = err.error || 'Gagal membuat file export.';
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match ? match[1] : `rekap-absensi-${from}_${to}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      statusEl.textContent = 'File berhasil diunduh.';
+    } catch (e) {
+      statusEl.textContent = 'Gagal mengunduh: ' + e.message;
+    }
+  });
+})();
 
 async function loadDaily() {
   const date = document.getElementById('dateInput').value;
