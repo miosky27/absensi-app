@@ -63,11 +63,16 @@
   .today-card { background:linear-gradient(135deg,#1a73e8,#1557b0); border-radius:14px; padding:14px; margin-bottom:16px; }
   .today-card .tc-label { color:#cfe0fb; font-size:12px; margin-bottom:10px; }
   .today-row { display:flex; gap:10px; }
-  .today-box { flex:1; border-radius:10px; padding:10px 12px; }
+  .today-box {
+    flex:1; border-radius:10px; padding:12px; border:none; text-align:left; cursor:pointer;
+    font-family:inherit; -webkit-tap-highlight-color: transparent;
+  }
   .today-box.in { background:rgba(255,255,255,0.18); }
   .today-box.out { background:rgba(255,255,255,0.18); }
+  .today-box:active { background:rgba(255,255,255,0.3); }
+  .today-box:disabled { cursor:default; opacity:0.85; }
   .today-box .tb-lbl { color:#e8f0fe; font-size:11px; font-weight:600; }
-  .today-box .tb-time { color:#fff; font-size:18px; font-weight:800; margin-top:2px; }
+  .today-box .tb-time { color:#fff; font-size:16px; font-weight:800; margin-top:2px; }
   .day-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
   .day-card .dc-date { font-weight:700; font-size:13px; margin-bottom:8px; }
   .day-card .dc-row { display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:4px 0; }
@@ -97,11 +102,6 @@
       </div>
     </div>
 
-    <div class="row-2" style="margin-bottom:14px">
-      <button class="btn btn-primary" id="btnMasuk">Absen Masuk</button>
-      <button class="btn btn-secondary" id="btnKeluar">Absen Keluar</button>
-    </div>
-
     <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" />
     <img id="preview" class="preview" />
 
@@ -113,11 +113,11 @@
       <div class="stat-box"><div class="snum" id="statLembur">0</div><div class="slbl">Lembur (jam)</div></div>
     </div>
 
-    <div class="today-card" id="todayCard" style="display:none">
+    <div class="today-card" id="todayCard">
       <div class="tc-label" id="todayDateLabel"></div>
       <div class="today-row">
-        <div class="today-box in"><div class="tb-lbl">Check In</div><div class="tb-time" id="todayMasuk">—</div></div>
-        <div class="today-box out"><div class="tb-lbl">Check Out</div><div class="tb-time" id="todayKeluar">—</div></div>
+        <button type="button" class="today-box in" id="btnMasuk"><div class="tb-lbl">Check In</div><div class="tb-time" id="todayMasuk">Absen Masuk</div></button>
+        <button type="button" class="today-box out" id="btnKeluar"><div class="tb-lbl">Check Out</div><div class="tb-time" id="todayKeluar">Absen Keluar</div></button>
       </div>
     </div>
 
@@ -219,11 +219,32 @@ function fmtTerlambat(jam, menit) {
   return (jam > 0 ? jam + 'j ' : '') + menit + 'm';
 }
 
+function renderTodayButtons(today) {
+  const btnM = document.getElementById('btnMasuk');
+  const btnK = document.getElementById('btnKeluar');
+  const lblM = document.getElementById('todayMasuk');
+  const lblK = document.getElementById('todayKeluar');
+  document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  if (today.masuk) {
+    lblM.textContent = today.masuk + ' WIB';
+    btnM.disabled = true;
+  } else {
+    lblM.textContent = 'Absen Masuk';
+    btnM.disabled = false;
+  }
+  if (today.keluar) {
+    lblK.textContent = today.keluar + ' WIB';
+    btnK.disabled = true;
+  } else {
+    lblK.textContent = 'Absen Keluar';
+    btnK.disabled = false;
+  }
+}
+
 async function loadHistory() {
   historyList.innerHTML = '';
   historyEmpty.textContent = 'Memuat...';
   document.getElementById('statRow').style.display = 'none';
-  document.getElementById('todayCard').style.display = 'none';
   try {
     const month = historyMonthInput.value;
     const res = await fetch(`/api/my-records?phone=${encodeURIComponent(currentPhone)}&month=${month}`);
@@ -244,15 +265,8 @@ async function loadHistory() {
     document.getElementById('statTerlambat').textContent = fmtTerlambat(data.summary.terlambatJam, data.summary.terlambatMenit);
     document.getElementById('statLembur').textContent = data.totalLemburJam;
 
-    // Hari ini (hanya tampil kalau bulan yang dipilih adalah bulan berjalan)
-    const isCurrentMonth = month === new Date().toISOString().slice(0, 7);
-    if (isCurrentMonth) {
-      const todayCard = document.getElementById('todayCard');
-      todayCard.style.display = 'block';
-      document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-      document.getElementById('todayMasuk').textContent = data.today.masuk ? data.today.masuk + ' WIB' : '—';
-      document.getElementById('todayKeluar').textContent = data.today.keluar ? data.today.keluar + ' WIB' : '—';
-    }
+    // Tombol Absen Masuk/Keluar sekaligus menampilkan jam absen hari ini (selalu, apa pun bulan yang sedang dilihat).
+    renderTodayButtons(data.today);
 
     if (!data.records || data.records.length === 0) {
       historyEmpty.textContent = 'Belum ada riwayat absen di bulan ini.';

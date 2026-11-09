@@ -336,8 +336,9 @@ const server = http.createServer(async (req, res) => {
       const emp = config.employees.find((e) => e.phone === phone);
       if (!emp) return sendJSON(res, 404, { error: 'Nomor telepon tidak terdaftar' });
 
-      const records = readJSON(RECORDS_FILE)
-        .filter((r) => r.phone === phone && r.dateKey.startsWith(month))
+      const allPhoneRecords = readJSON(RECORDS_FILE).filter((r) => r.phone === phone);
+      const records = allPhoneRecords
+        .filter((r) => r.dateKey.startsWith(month))
         .sort((a, b) => (a.dateKey + a.timeHHMM < b.dateKey + b.timeHHMM ? 1 : -1)); // terbaru dulu
 
       const lemburMap = computeLemburByEmployeeDate(records);
@@ -365,7 +366,9 @@ const server = http.createServer(async (req, res) => {
         }
       }
       const todayKey = dateKeyJakarta(new Date().toISOString());
-      const todayRecords = records.filter((r) => r.dateKey === todayKey);
+      // Status hari ini selalu dihitung dari seluruh data (bukan hanya bulan yang sedang dilihat),
+      // supaya tombol Absen Masuk/Keluar tetap akurat walau karyawan sedang membuka riwayat bulan lain.
+      const todayRecords = allPhoneRecords.filter((r) => r.dateKey === todayKey);
       const todayMasuk = todayRecords.find((r) => r.type === 'masuk');
       const todayKeluar = todayRecords.find((r) => r.type === 'keluar');
 
