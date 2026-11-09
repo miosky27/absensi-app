@@ -823,6 +823,63 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { records: filtered });
     }
 
+    // Admin: input manual jam absen (karyawan lupa absen masuk/pulang/lembur masuk/lembur pulang).
+    if (pathName === '/api/records/manual' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const { phone, type, dateKey, timeHHMM } = body;
+      const emp = config.employees.find((e) => e.phone === String(phone || '').trim());
+      if (!emp) return sendJSON(res, 400, { error: 'Karyawan tidak ditemukan.' });
+      if (!['masuk', 'keluar', 'lembur_masuk', 'lembur_keluar'].includes(type)) {
+        return sendJSON(res, 400, { error: 'Jenis absen tidak valid.' });
+      }
+      if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return sendJSON(res, 400, { error: 'Tanggal tidak valid.' });
+      if (!timeHHMM || !/^\d{2}:\d{2}$/.test(timeHHMM)) return sendJSON(res, 400, { error: 'Jam tidak valid (format HH:MM).' });
+
+      const records = readJSON(RECORDS_FILE);
+      const exists = records.find((r) => r.phone === emp.phone && r.dateKey === dateKey && r.type === type);
+      if (exists) return sendJSON(res, 400, { error: 'Sudah ada data absen untuk jenis & tanggal ini. Gunakan Edit untuk mengubahnya.' });
+
+      const record = {
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        phone: emp.phone,
+        employee: emp.name,
+        type,
+        lat: null,
+        lng: null,
+        nearestLocation: 'Input Manual Admin',
+        distanceMeters: 0,
+        withinRadius: true,
+        shift: null,
+        shiftStart: null,
+        shiftEnd: null,
+        photoFilename: null,
+        serverTime: new Date().toISOString(),
+        deviceTime: null,
+        dateKey,
+        timeHHMM,
+        manualByAdmin: true,
+      };
+      records.push(record);
+      writeJSON(RECORDS_FILE, records);
+      return sendJSON(res, 200, { ok: true, record });
+    }
+
+    // Admin: edit jam absen yang sudah ada (perbaikan kesalahan / lupa absen).
+    if (pathName.startsWith('/api/records/') && pathName.split('/').length === 4 && req.method === 'PUT') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const records = readJSON(RECORDS_FILE);
+      const r = records.find((x) => x.id === id);
+      if (!r) return sendJSON(res, 404, { error: 'Data absen tidak ditemukan' });
+      if (!body.timeHHMM || !/^\d{2}:\d{2}$/.test(body.timeHHMM)) return sendJSON(res, 400, { error: 'Jam tidak valid (format HH:MM).' });
+      r.timeHHMM = body.timeHHMM;
+      r.manualByAdmin = true;
+      writeJSON(RECORDS_FILE, records);
+      return sendJSON(res, 200, { ok: true, record: r });
+    }
+
     if (pathName === '/api/summary' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const month = url.searchParams.get('month'); // YYYY-MM

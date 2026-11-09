@@ -443,6 +443,10 @@ async function loadDaily() {
     const photoRecord = g.masuk || g.keluar || g.lembur_masuk || g.lembur_keluar;
     const photoUrl = photoRecord ? '/api/photo/' + photoRecord.photoFilename + '?t=' + token : null;
 
+    const editBtn = (g, type) => emp.phone
+      ? `<button class="btn secondary small" type="button" data-manualedit="${type}" data-phone="${emp.phone}" data-recid="${g[type] ? g[type].id : ''}" data-current="${g[type] ? g[type].timeHHMM : ''}" style="padding:2px 8px;font-size:11px;margin-left:4px">${g[type] ? 'Edit' : '+ Isi'}</button>`
+      : '';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${photoUrl
@@ -450,15 +454,43 @@ async function loadDaily() {
         : `<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:#bbb;font-size:18px">—</div>`}</td>
       <td>${name}</td>
       <td>${emp.idNumber || '—'}</td>
-      <td>${g.masuk ? `${g.masuk.timeHHMM} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}</td>
-      <td>${g.keluar ? `${g.keluar.timeHHMM} ${attendanceStatusBadge(g.keluar)}` : '—'}</td>
-      <td>${g.lembur_masuk ? `${g.lembur_masuk.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}</td>
-      <td>${g.lembur_keluar ? `${g.lembur_keluar.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}</td>
+      <td>${g.masuk ? `${g.masuk.timeHHMM} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}${editBtn(g, 'masuk')}</td>
+      <td>${g.keluar ? `${g.keluar.timeHHMM} ${attendanceStatusBadge(g.keluar)}` : '—'}${editBtn(g, 'keluar')}</td>
+      <td>${g.lembur_masuk ? `${g.lembur_masuk.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_masuk')}</td>
+      <td>${g.lembur_keluar ? `${g.lembur_keluar.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_keluar')}</td>
     `;
     tbody.appendChild(tr);
   }
 
   document.getElementById('dailyEmpty').textContent = allNames.length === 0 ? 'Belum ada data karyawan.' : '';
+
+  const tipeLabel = { masuk: 'Masuk', keluar: 'Pulang', lembur_masuk: 'Lembur Masuk', lembur_keluar: 'Lembur Pulang' };
+  tbody.querySelectorAll('[data-manualedit]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const type = btn.dataset.manualedit;
+      const phone = btn.dataset.phone;
+      const recId = btn.dataset.recid;
+      const current = btn.dataset.current;
+      const label = tipeLabel[type] || type;
+      const input = prompt(`Jam ${label} (format HH:MM):`, current || '08:00');
+      if (input === null) return;
+      const timeHHMM = input.trim();
+      if (!/^\d{2}:\d{2}$/.test(timeHHMM)) { alert('Format jam tidak valid. Gunakan HH:MM, contoh 08:30.'); return; }
+      let res;
+      if (recId) {
+        res = await fetch(`/api/records/${recId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ timeHHMM }),
+        });
+      } else {
+        res = await fetch('/api/records/manual', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ phone, type, dateKey: date, timeHHMM }),
+        });
+      }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menyimpan jam absen.'); return; }
+      loadDaily();
+    });
+  });
 }
 
 let currentWorkStart = '08:00'; // fallback kalau record tidak punya data shift (data lama)
