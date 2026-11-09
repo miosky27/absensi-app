@@ -112,6 +112,7 @@
     <div class="login-logo-circle"><img src="/logo.png" alt="Erly's Cake & Bakery" /></div>
     <h1>Masuk</h1>
     <div class="sub">Admin Absensi - Erly's Cake &amp; Bakery</div>
+    <div class="field"><label>Email Admin</label><input type="email" id="emailInput" placeholder="nama@email.com" /></div>
     <div class="field"><label>Password Admin</label><input type="password" id="pwInput" /></div>
     <button class="btn" id="loginBtn" style="width:100%">Masuk</button>
     <div id="loginErr" style="color:#c5221f;font-size:13px;margin-top:8px"></div>
@@ -311,7 +312,8 @@
           <div class="field" style="flex:1;margin-bottom:0"><label>Maks. Terlambat untuk Kerajinan (kali)</label><input type="number" id="cfgMaksTerlambat" /></div>
         </div>
 
-        <div class="field" style="margin-top:16px"><label>Ganti Password Admin (kosongkan jika tidak diubah)</label><input type="password" id="cfgPassword" /></div>
+        <div class="field" style="margin-top:16px"><label>Ganti Email Admin (kosongkan jika tidak diubah)</label><input type="email" id="cfgEmail" placeholder="nama@email.com" /></div>
+        <div class="field"><label>Ganti Password Admin (kosongkan jika tidak diubah)</label><input type="password" id="cfgPassword" /></div>
 
         <div style="margin-top:16px">
           <button class="btn" id="saveCfgBtn">Simpan Pengaturan</button>
@@ -339,15 +341,19 @@ async function tryAutoLogin() {
 tryAutoLogin();
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('emailInput').value.trim();
   const password = document.getElementById('pwInput').value;
   const res = await fetch('/api/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
   });
   const data = await res.json();
   if (!res.ok) { document.getElementById('loginErr').textContent = data.error; return; }
   token = data.token;
   localStorage.setItem('absensi_admin_token', token);
   showApp();
+});
+document.getElementById('emailInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('loginBtn').click();
 });
 document.getElementById('pwInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('loginBtn').click();
@@ -747,6 +753,7 @@ async function loadConfig() {
   document.getElementById('cfgPengaliOff').value = cfg.pengaliPotonganOff ?? 2;
   document.getElementById('cfgToleransi').value = cfg.toleransiTerlambatMenit ?? 15;
   document.getElementById('cfgMaksTerlambat').value = cfg.maksTerlambatUntukKerajinan ?? 2;
+  document.getElementById('cfgEmail').placeholder = cfg.adminEmail || 'nama@email.com';
 }
 
 let currentLocations = [];
@@ -1027,6 +1034,8 @@ document.getElementById('saveCfgBtn').addEventListener('click', async () => {
   };
   const pw = document.getElementById('cfgPassword').value;
   if (pw) body.adminPassword = pw;
+  const email = document.getElementById('cfgEmail').value.trim();
+  if (email) body.adminEmail = email;
   const res = await fetch('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body),
   });

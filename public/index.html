@@ -20,7 +20,8 @@
 
   /* ---- Layar Masuk (login) ---- */
   .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .login-card { background:#fff; border-radius:20px; padding:32px 28px; box-shadow:0 4px 20px rgba(74,24,67,0.12); width:100%; max-width:360px; text-align:center; }
+  .login-card { background:#fff; border-radius:20px; padding:32px 28px; box-shadow:0 4px 20px rgba(74,24,67,0.12); width:100%; max-width:360px; text-align:center; position:relative; }
+  .admin-entry-link { position:absolute; top:16px; right:18px; font-size:12px; color:#702464; font-weight:600; text-decoration:none; }
   .login-logo-circle { width:auto; height:90px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; }
   .login-logo-circle img { max-width:220px; max-height:90px; width:auto; height:auto; object-fit:contain; }
   .login-card h1 { font-size:20px; margin:0 0 4px; color:#4a1843; }
@@ -168,6 +169,7 @@
 <body>
 <div class="login-wrap" id="loginScreen">
   <div class="login-card">
+    <a class="admin-entry-link" href="/admin.html">Masuk sebagai Admin</a>
     <div class="login-logo-circle"><img src="/logo.png" alt="Erly's Cake & Bakery" /></div>
     <h1>Masuk</h1>
     <div class="sub">Absensi Erly's Cake &amp; Bakery</div>

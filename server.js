@@ -61,6 +61,7 @@ ensureFile(CONFIG_FILE, {
     { phone: "081234567891", name: "Contoh Karyawan 2", namaDepan: "Contoh", namaBelakang: "Karyawan 2", idNumber: "", position: "", email: "", tanggalMasuk: "", status: "aktif", photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 },
   ],
   adminPassword: process.env.ADMIN_PASSWORD || "admin123",
+  adminEmail: process.env.ADMIN_EMAIL || "f.yazid27@gmail.com",
   workStartTime: "08:00", // fallback kalau record lama tidak punya data shift
   reportEmail: "f.yazid27@gmail.com",
   // ---- Pengaturan perhitungan gaji ----
@@ -126,6 +127,8 @@ function migrateConfig(config) {
   for (const key of Object.keys(gajiDefaults)) {
     if (config[key] === undefined) { config[key] = gajiDefaults[key]; changed = true; }
   }
+  // Config lama (sebelum login admin pakai email) belum punya field ini.
+  if (config.adminEmail === undefined) { config.adminEmail = "f.yazid27@gmail.com"; changed = true; }
   if (changed || typeof config.officeLat === 'number') writeJSON(CONFIG_FILE, config);
   return config;
 }
@@ -685,13 +688,15 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    // ---- Login admin ----
+    // ---- Login admin (email + password) ----
     if (pathName === '/api/login' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-      if (body.password === config.adminPassword) {
+      const emailOk = String(body.email || '').trim().toLowerCase() === String(config.adminEmail || '').trim().toLowerCase();
+      const passwordOk = body.password === config.adminPassword;
+      if (emailOk && passwordOk) {
         return sendJSON(res, 200, { token: hashPassword(config.adminPassword) });
       }
-      return sendJSON(res, 401, { error: 'Password salah' });
+      return sendJSON(res, 401, { error: 'Email atau password salah' });
     }
 
     // ---- Absen (check-in / check-out / lembur masuk / lembur pulang) ----
@@ -998,8 +1003,9 @@ const server = http.createServer(async (req, res) => {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const body = JSON.parse((await readBody(req)).toString('utf8'));
       const updated = { ...config, ...body };
-      // Jangan biarkan password kosong tak sengaja
+      // Jangan biarkan password/email kosong tak sengaja
       if (!updated.adminPassword) updated.adminPassword = config.adminPassword;
+      if (!updated.adminEmail) updated.adminEmail = config.adminEmail;
       writeJSON(CONFIG_FILE, updated);
       return sendJSON(res, 200, { ok: true });
     }
