@@ -13,6 +13,7 @@ const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const SCHEDULES_FILE = path.join(DATA_DIR, 'schedules.json');
 
 const PORT = process.env.PORT || 3000;
 
@@ -21,6 +22,9 @@ function ensureFile(file, defaultValue) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(defaultValue, null, 2));
 }
 ensureFile(RECORDS_FILE, []);
+// Jadwal kerja rolling per karyawan per tanggal: [{ employee, date, startTime, endTime }]
+// Kalau karyawan tidak punya entri untuk tanggal tersebut, dipakai workStartTime global sebagai default.
+ensureFile(SCHEDULES_FILE, []);
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang. Absen valid jika berada dalam radius SALAH SATU lokasi.
   locations: [
@@ -57,6 +61,20 @@ function migrateConfig(config) {
   }
   if (!Array.isArray(config.locations)) config.locations = [];
   return config;
+}
+
+// ---------- Jadwal kerja rolling ----------
+function scheduleMap(schedules) {
+  const map = {};
+  for (const s of schedules) map[s.employee + '|' + s.date] = s;
+  return map;
+}
+
+// Jam masuk yang berlaku untuk karyawan pada tanggal tertentu: pakai jadwal
+// rolling kalau ada (dari map hasil scheduleMap()), kalau tidak pakai jam masuk default (global).
+function effectiveStartTime(employee, dateKey, config, schedMap) {
+  const sched = schedMap[employee + '|' + dateKey];
+  return (sched && sched.startTime) || config.workStartTime;
 }
 
 // ---------- Lembur ----------
@@ -345,6 +363,7 @@ const server = http.createServer(async (req, res) => {
       const month = url.searchParams.get('month'); // YYYY-MM
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
       const lemburMap = computeLemburByEmployeeDate(records);
+      const schedMap = scheduleMap(readJSON(SCHEDULES_FILE));
 
       const byEmployee = {};
       for (const emp of config.employees) {
@@ -358,7 +377,8 @@ const server = http.createServer(async (req, res) => {
         e.hariHadir.add(r.dateKey);
         e.totalAbsen += 1;
         if (!r.withinRadius) e.diLuarRadius += 1;
-        if (r.type === 'masuk' && config.workStartTime && r.timeHHMM > config.workStartTime) {
+        const startTime = effectiveStartTime(r.employee, r.dateKey, config, schedMap);
+        if (r.type === 'masuk' && startTime && r.timeHHMM > startTime) {
           e.terlambat += 1;
         }
       }
@@ -413,6 +433,7 @@ const server = http.createServer(async (req, res) => {
       const month = url.searchParams.get('month') || dateKeyJakarta(new Date().toISOString()).slice(0, 7);
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
       const lemburMap = computeLemburByEmployeeDate(records);
+      const schedMap = scheduleMap(readJSON(SCHEDULES_FILE));
 
       const byEmployee = {};
       for (const emp of config.employees) {
@@ -426,7 +447,8 @@ const server = http.createServer(async (req, res) => {
         e.hariHadir.add(r.dateKey);
         e.totalAbsen += 1;
         if (!r.withinRadius) e.diLuarRadius += 1;
-        if (r.type === 'masuk' && config.workStartTime && r.timeHHMM > config.workStartTime) {
+        const startTime = effectiveStartTime(r.employee, r.dateKey, config, schedMap);
+        if (r.type === 'masuk' && startTime && r.timeHHMM > startTime) {
           e.terlambat += 1;
         }
       }
@@ -448,6 +470,29 @@ const server = http.createServer(async (req, res) => {
       );
       const text = `Rekap Absensi Bulan ${month}\n\n${lines.join('\n')}`;
       return sendJSON(res, 200, { month, text, summary });
+    }
+
+    // ---- Jadwal kerja rolling (per karyawan, per tanggal) ----
+    if (pathName === '/api/schedules/day' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const date = url.searchParams.get('date');
+      const schedules = readJSON(SCHEDULES_FILE).filter((s) => s.date === date);
+      return sendJSON(res, 200, { date, schedules });
+    }
+
+    if (pathName === '/api/schedules/day' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const { date, entries } = body; // entries: [{ employee, startTime, endTime }]
+      if (!date || !Array.isArray(entries)) return sendJSON(res, 400, { error: 'Data tidak lengkap' });
+
+      let schedules = readJSON(SCHEDULES_FILE).filter((s) => s.date !== date);
+      for (const e of entries) {
+        if (!e.employee || !e.startTime) continue; // kosongkan = pakai default global
+        schedules.push({ employee: e.employee, date, startTime: e.startTime, endTime: e.endTime || null });
+      }
+      writeJSON(SCHEDULES_FILE, schedules);
+      return sendJSON(res, 200, { ok: true });
     }
 
     if (pathName === '/api/config' && req.method === 'GET') {

@@ -60,6 +60,7 @@
     <div class="tabs">
       <div class="tab active" data-tab="harian">Laporan Harian</div>
       <div class="tab" data-tab="bulanan">Rekap Bulanan</div>
+      <div class="tab" data-tab="jadwal">Jadwal Kerja</div>
       <div class="tab" data-tab="setting">Pengaturan</div>
     </div>
 
@@ -82,6 +83,16 @@
         <thead><tr><th>Nama</th><th>Hari Hadir</th><th>Total Absen</th><th>Terlambat</th><th>Di Luar Radius</th><th>Lembur (jam)</th></tr></thead>
         <tbody></tbody>
       </table>
+      </div>
+    </div>
+
+    <div id="tab-jadwal" class="card" style="display:none">
+      <div class="field"><label>Tanggal</label><input type="date" id="jadwalDateInput" /></div>
+      <div class="hint" style="margin-bottom:10px">Atur jam masuk & pulang tiap karyawan untuk tanggal ini. Kosongkan jika karyawan memakai jadwal default (lihat tab Pengaturan).</div>
+      <div id="jadwalList"></div>
+      <div style="margin-top:14px">
+        <button class="btn" id="saveJadwalBtn">Simpan Jadwal Tanggal Ini</button>
+        <span id="jadwalMsg" style="margin-left:10px;font-size:13px;color:#137333"></span>
       </div>
     </div>
 
@@ -138,7 +149,8 @@ function showApp() {
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('dateInput').value = today;
   document.getElementById('monthInput').value = today.slice(0,7);
-  loadConfig().then(loadDaily);
+  document.getElementById('jadwalDateInput').value = today;
+  loadConfig().then(() => { loadDaily(); loadJadwal(); });
   loadMonthly();
 }
 
@@ -146,7 +158,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
-    ['harian','bulanan','setting'].forEach((name) => {
+    ['harian','bulanan','jadwal','setting'].forEach((name) => {
       document.getElementById('tab-' + name).style.display = (name === tab.dataset.tab) ? 'block' : 'none';
     });
   });
@@ -157,10 +169,16 @@ document.getElementById('monthInput').addEventListener('change', loadMonthly);
 
 async function loadDaily() {
   const date = document.getElementById('dateInput').value;
-  const res = await fetch('/api/records?date=' + date, { headers: authHeaders() });
-  const data = await res.json();
+  const [recRes, schedRes] = await Promise.all([
+    fetch('/api/records?date=' + date, { headers: authHeaders() }),
+    fetch('/api/schedules/day?date=' + date, { headers: authHeaders() }),
+  ]);
+  const data = await recRes.json();
+  const schedData = await schedRes.json();
+  const schedForDate = {}; // nama -> jam masuk
+  (schedData.schedules || []).forEach((s) => { schedForDate[s.employee] = s.startTime; });
   const records = data.records || [];
-  renderSummary(records);
+  renderSummary(records, schedForDate);
 
   const tbody = document.querySelector('#dailyTable tbody');
   tbody.innerHTML = '';
@@ -185,7 +203,8 @@ async function loadDaily() {
 
 let currentWorkStart = '08:00';
 
-function renderSummary(records) {
+function renderSummary(records, schedForDate) {
+  schedForDate = schedForDate || {};
   const totalEmployees = currentEmployees.length;
   const maskukByEmployee = {}; // nama -> jam masuk paling awal
   for (const r of records) {
@@ -197,7 +216,8 @@ function renderSummary(records) {
   const hadirNames = Object.keys(maskukByEmployee);
   let onTime = 0, terlambat = 0;
   for (const name of hadirNames) {
-    if (currentWorkStart && maskukByEmployee[name] > currentWorkStart) terlambat++;
+    const startTime = schedForDate[name] || currentWorkStart; // jadwal rolling > default global
+    if (startTime && maskukByEmployee[name] > startTime) terlambat++;
     else onTime++;
   }
   const alpa = Math.max(0, totalEmployees - hadirNames.length);
@@ -339,6 +359,53 @@ document.getElementById('saveCfgBtn').addEventListener('click', async () => {
   const msg = document.getElementById('saveMsg');
   if (res.ok) { msg.textContent = 'Tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); }
   else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan'; }
+});
+
+// ---- Jadwal Kerja (rolling per tanggal) ----
+document.getElementById('jadwalDateInput').addEventListener('change', loadJadwal);
+
+async function loadJadwal() {
+  const date = document.getElementById('jadwalDateInput').value;
+  const res = await fetch('/api/schedules/day?date=' + date, { headers: authHeaders() });
+  const data = await res.json();
+  const byEmployee = {};
+  (data.schedules || []).forEach((s) => { byEmployee[s.employee] = s; });
+
+  const container = document.getElementById('jadwalList');
+  container.innerHTML = '';
+  currentEmployees.forEach((emp) => {
+    const sched = byEmployee[emp.name] || {};
+    const row = document.createElement('div');
+    row.className = 'loc-row';
+    row.innerHTML = `
+      <input type="text" value="${emp.name}" disabled style="flex:1.2;background:#f4f6f8" />
+      <input type="time" placeholder="Jam masuk" value="${sched.startTime || ''}" data-emp="${emp.name}" data-field="startTime" />
+      <input type="time" placeholder="Jam pulang" value="${sched.endTime || ''}" data-emp="${emp.name}" data-field="endTime" />
+    `;
+    container.appendChild(row);
+  });
+  if (currentEmployees.length === 0) {
+    container.innerHTML = '<div class="hint">Belum ada karyawan terdaftar. Tambahkan dulu di tab Pengaturan.</div>';
+  }
+}
+
+document.getElementById('saveJadwalBtn').addEventListener('click', async () => {
+  const date = document.getElementById('jadwalDateInput').value;
+  const inputs = document.querySelectorAll('#jadwalList input[data-emp]');
+  const byEmployee = {};
+  inputs.forEach((inp) => {
+    const emp = inp.dataset.emp;
+    if (!byEmployee[emp]) byEmployee[emp] = { employee: emp };
+    byEmployee[emp][inp.dataset.field] = inp.value;
+  });
+  const entries = Object.values(byEmployee);
+  const res = await fetch('/api/schedules/day', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ date, entries }),
+  });
+  const msg = document.getElementById('jadwalMsg');
+  if (res.ok) { msg.style.color = '#137333'; msg.textContent = 'Jadwal tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); }
+  else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan jadwal'; }
 });
 
 function openOverlay(src) {
