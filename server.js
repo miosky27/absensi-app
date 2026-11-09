@@ -17,6 +17,9 @@ const EMPLOYEE_PHOTOS_DIR = path.join(DATA_DIR, 'employee-photos');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const LEAVES_FILE = path.join(DATA_DIR, 'leaves.json'); // pengajuan izin/cuti
+const KASBON_FILE = path.join(DATA_DIR, 'kasbon.json'); // pinjaman karyawan
+const KASBON_PAYMENTS_FILE = path.join(DATA_DIR, 'kasbon_payments.json'); // cicilan/pelunasan kasbon
 
 const PORT = process.env.PORT || 3000;
 
@@ -28,6 +31,9 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(PHOTOS_DIR)) fs.mkdirSync(PHOTOS_DIR, { recursive: true });
 if (!fs.existsSync(EMPLOYEE_PHOTOS_DIR)) fs.mkdirSync(EMPLOYEE_PHOTOS_DIR, { recursive: true });
 ensureFile(RECORDS_FILE, []);
+ensureFile(LEAVES_FILE, []);
+ensureFile(KASBON_FILE, []);
+ensureFile(KASBON_PAYMENTS_FILE, []);
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
   // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
@@ -51,8 +57,8 @@ ensureFile(CONFIG_FILE, {
   ],
   // Daftar karyawan: login memakai nomor telepon
   employees: [
-    { phone: "081234567890", name: "Contoh Karyawan 1", idNumber: "", position: "", photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 },
-    { phone: "081234567891", name: "Contoh Karyawan 2", idNumber: "", position: "", photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 },
+    { phone: "081234567890", name: "Contoh Karyawan 1", namaDepan: "Contoh", namaBelakang: "Karyawan 1", idNumber: "", position: "", email: "", tanggalMasuk: "", status: "aktif", photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 },
+    { phone: "081234567891", name: "Contoh Karyawan 2", namaDepan: "Contoh", namaBelakang: "Karyawan 2", idNumber: "", position: "", email: "", tanggalMasuk: "", status: "aktif", photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 },
   ],
   adminPassword: process.env.ADMIN_PASSWORD || "admin123",
   workStartTime: "08:00", // fallback kalau record lama tidak punya data shift
@@ -98,6 +104,15 @@ function migrateConfig(config) {
     if (emp.photoFilename === undefined) { emp.photoFilename = null; changed = true; }
     if (emp.gajiPokok === undefined) { emp.gajiPokok = 0; changed = true; }
     if (emp.upahLemburPerJam === undefined) { emp.upahLemburPerJam = 0; changed = true; }
+    if (emp.email === undefined) { emp.email = ''; changed = true; }
+    if (emp.tanggalMasuk === undefined) { emp.tanggalMasuk = ''; changed = true; }
+    if (emp.status === undefined) { emp.status = 'aktif'; changed = true; }
+    if (emp.namaDepan === undefined || emp.namaBelakang === undefined) {
+      const parts = String(emp.name || '').trim().split(/\s+/);
+      emp.namaDepan = parts[0] || '';
+      emp.namaBelakang = parts.slice(1).join(' ');
+      changed = true;
+    }
   }
   // Pengaturan gaji lama (sebelum fitur perhitungan gaji) belum punya field-field ini.
   const gajiDefaults = {
@@ -277,11 +292,37 @@ function defaultPayrollPeriod() {
 }
 
 // Hitung rekap gaji per karyawan untuk satu periode (records sudah difilter ke rentang periode).
+// Jumlah hari cuti/izin yang SUDAH DISETUJUI admin, per karyawan, yang beririsan dengan
+// periode [from, to]. Hari-hari ini tidak dihitung sebagai "tidak hadir"/OFF di payroll.
+function countApprovedLeaveDaysByEmployee(leaves, from, to) {
+  const result = {};
+  for (const l of leaves) {
+    if (l.status !== 'approved') continue;
+    const start = l.startDate > from ? l.startDate : from;
+    const end = l.endDate < to ? l.endDate : to;
+    if (start > end) continue;
+    result[l.employee] = (result[l.employee] || 0) + countDaysInclusive(start, end);
+  }
+  return result;
+}
+
+// Total pembayaran/potongan kasbon per karyawan yang jatuh di dalam periode [from, to].
+function sumKasbonPaymentsByEmployee(payments, from, to) {
+  const result = {};
+  for (const p of payments) {
+    if (p.tanggal < from || p.tanggal > to) continue;
+    result[p.employee] = (result[p.employee] || 0) + p.jumlah;
+  }
+  return result;
+}
+
 function computePayrollSummary(records, config, from, to) {
   const totalHariPeriode = countDaysInclusive(from, to);
   const toleransi = config.toleransiTerlambatMenit || 0;
   const daily = computePayrollDailyByEmployeeDate(records, toleransi);
   const lemburTambahan = computeLemburTambahanByEmployeeDate(records);
+  const cutiDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE), from, to);
+  const kasbonPotongan = sumKasbonPaymentsByEmployee(readJSON(KASBON_PAYMENTS_FILE), from, to);
 
   const makeEmpty = (employee) => ({
     employee, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatKali: 0,
@@ -321,8 +362,10 @@ function computePayrollSummary(records, config, from, to) {
     const gajiHarian = gajiPokok / 30;
     const upahJam = Number(emp.upahLemburPerJam) > 0 ? Number(emp.upahLemburPerJam) : gajiPokok / 240;
 
-    const hariTidakHadir = Math.max(0, totalHariPeriode - e.hariHadir);
+    const hariCuti = cutiDisetujui[e.employee] || 0;
+    const hariTidakHadir = Math.max(0, totalHariPeriode - e.hariHadir - hariCuti);
     const offBerlebih = Math.max(0, hariTidakHadir - (config.jatahOffPerPeriode || 0));
+    const potonganKasbon = kasbonPotongan[e.employee] || 0;
 
     const uangMakan = e.hariHadir * (config.uangMakanPerHari || 0);
     const uangTransport = e.hariHadir * (config.uangTransportPerHari || 0);
@@ -343,19 +386,19 @@ function computePayrollSummary(records, config, from, to) {
     const potonganOff = Math.round(offBerlebih * gajiHarian * (config.pengaliPotonganOff || 0));
     const potonganTerlambat = Math.round(terlambatJam * upahJam);
     const potonganPulangCepat = Math.round(pulangCepatJam * upahJam);
-    const totalPotongan = potonganOff + potonganTerlambat + potonganPulangCepat;
+    const totalPotongan = potonganOff + potonganTerlambat + potonganPulangCepat + potonganKasbon;
 
     const gajiBersih = totalPendapatan + kerajinan + uangTransport - totalPotongan;
 
     return {
       employee: e.employee,
       gajiPokok, upahPerJam: Math.round(upahJam),
-      hariHadir: e.hariHadir, hariTidakHadir, offBerlebih,
+      hariHadir: e.hariHadir, hariCuti, hariTidakHadir, offBerlebih,
       terlambatKali: e.terlambatKali, terlambatJam, pulangCepatJam, lemburAwalJam, lemburAkhirJam,
       lemburTambahanJam, lemburTambahanRp,
       uangMakan, uangTransport, lemburAwalRp, lemburAkhirRp, totalPendapatan,
       kerajinanEligible, kerajinan,
-      potonganOff, potonganTerlambat, potonganPulangCepat, totalPotongan,
+      potonganOff, potonganTerlambat, potonganPulangCepat, potonganKasbon, totalPotongan,
       gajiBersih,
     };
   });
@@ -522,6 +565,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       const emp = config.employees.find((e) => e.phone === String(body.phone || '').trim());
       if (!emp) return sendJSON(res, 404, { error: 'Nomor telepon tidak terdaftar' });
+      if (emp.status === 'nonaktif') return sendJSON(res, 403, { error: 'Akun karyawan ini sudah tidak aktif. Hubungi admin.' });
       return sendJSON(res, 200, {
         name: emp.name,
         idNumber: emp.idNumber || '',
@@ -663,6 +707,9 @@ const server = http.createServer(async (req, res) => {
       const emp = config.employees.find((e) => e.phone === String(phone).trim());
       if (!emp) {
         return sendJSON(res, 400, { error: 'Nomor telepon tidak terdaftar. Hubungi admin untuk didaftarkan.' });
+      }
+      if (emp.status === 'nonaktif') {
+        return sendJSON(res, 403, { error: 'Akun karyawan ini sudah tidak aktif. Hubungi admin.' });
       }
 
       if (config.locations.length === 0) {
@@ -1021,6 +1068,192 @@ const server = http.createServer(async (req, res) => {
       }
       writeJSON(CONFIG_FILE, fresh);
       return sendJSON(res, 200, { ok: true, added, updated, errors });
+    }
+
+    // ---- Export data karyawan ke CSV (bisa dibuka di Excel) ----
+    if (pathName === '/api/employees/export' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const cols = ['Nama', 'No Telepon', 'No ID', 'Jabatan', 'Email', 'Tanggal Masuk', 'Status', 'Gaji Pokok', 'Upah Lembur Per Jam'];
+      const esc = (v) => {
+        const s = String(v === undefined || v === null ? '' : v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      const lines = [cols.map(esc).join(',')];
+      for (const e of config.employees) {
+        lines.push([
+          e.name, e.phone, e.idNumber || '', e.position || '', e.email || '',
+          e.tanggalMasuk || '', e.status || 'aktif', e.gajiPokok || 0, e.upahLemburPerJam || 0,
+        ].map(esc).join(','));
+      }
+      const csv = '﻿' + lines.join('\r\n'); // BOM biar Excel baca UTF-8 dengan benar
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="data-karyawan.csv"',
+      });
+      return res.end(csv);
+    }
+
+    // ---- Izin/Cuti ----
+    // Karyawan mengajukan (tanpa login admin, identifikasi via nomor telepon).
+    if (pathName === '/api/leaves' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const { phone, type, startDate, endDate, reason } = body;
+      const emp = config.employees.find((e) => e.phone === String(phone || '').trim());
+      if (!emp) return sendJSON(res, 400, { error: 'Nomor telepon tidak terdaftar.' });
+      if (!type || !startDate || !endDate) return sendJSON(res, 400, { error: 'Jenis, tanggal mulai, dan tanggal selesai wajib diisi.' });
+      if (endDate < startDate) return sendJSON(res, 400, { error: 'Tanggal selesai tidak boleh sebelum tanggal mulai.' });
+      const leaves = readJSON(LEAVES_FILE);
+      const entry = {
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        phone: emp.phone, employee: emp.name, type, startDate, endDate,
+        reason: reason || '', status: 'pending',
+        createdAt: new Date().toISOString(), reviewedAt: null,
+      };
+      leaves.push(entry);
+      writeJSON(LEAVES_FILE, leaves);
+      return sendJSON(res, 200, { ok: true, leave: entry });
+    }
+    // Riwayat pengajuan izin/cuti milik karyawan sendiri.
+    if (pathName === '/api/my-leaves' && req.method === 'GET') {
+      const phone = String(url.searchParams.get('phone') || '').trim();
+      const leaves = readJSON(LEAVES_FILE).filter((l) => l.phone === phone)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return sendJSON(res, 200, { leaves });
+    }
+    // Admin: daftar semua pengajuan izin/cuti, opsional filter per tanggal (yang sedang berjalan pada tanggal itu) atau status.
+    if (pathName === '/api/leaves' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      let leaves = readJSON(LEAVES_FILE);
+      const date = url.searchParams.get('date');
+      const status = url.searchParams.get('status');
+      if (date) leaves = leaves.filter((l) => l.startDate <= date && date <= l.endDate);
+      if (status) leaves = leaves.filter((l) => l.status === status);
+      leaves.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return sendJSON(res, 200, { leaves });
+    }
+    // Admin: approve/reject pengajuan.
+    if (pathName.startsWith('/api/leaves/') && pathName.endsWith('/approve') && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const leaves = readJSON(LEAVES_FILE);
+      const l = leaves.find((x) => x.id === id);
+      if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
+      l.status = 'approved'; l.reviewedAt = new Date().toISOString();
+      writeJSON(LEAVES_FILE, leaves);
+      return sendJSON(res, 200, { ok: true });
+    }
+    if (pathName.startsWith('/api/leaves/') && pathName.endsWith('/reject') && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const leaves = readJSON(LEAVES_FILE);
+      const l = leaves.find((x) => x.id === id);
+      if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
+      l.status = 'rejected'; l.reviewedAt = new Date().toISOString();
+      writeJSON(LEAVES_FILE, leaves);
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // ---- Kasbon ----
+    // Karyawan mengajukan kasbon baru.
+    if (pathName === '/api/kasbon' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const { phone, jenis, jumlah, catatan } = body;
+      const emp = config.employees.find((e) => e.phone === String(phone || '').trim());
+      if (!emp) return sendJSON(res, 400, { error: 'Nomor telepon tidak terdaftar.' });
+      if (!['cicil', 'potlang'].includes(jenis)) return sendJSON(res, 400, { error: 'Jenis kasbon harus "cicil" atau "potlang".' });
+      const jml = Number(jumlah);
+      if (!jml || jml <= 0) return sendJSON(res, 400, { error: 'Jumlah pinjaman harus lebih dari 0.' });
+      const kasbonList = readJSON(KASBON_FILE);
+      const entry = {
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        phone: emp.phone, employee: emp.name, jenis, jumlah: jml, catatan: catatan || '',
+        status: 'pending', // pending -> disetujui admin -> lunas
+        tanggal: dateKeyJakarta(new Date().toISOString()),
+        createdAt: new Date().toISOString(),
+      };
+      kasbonList.push(entry);
+      writeJSON(KASBON_FILE, kasbonList);
+      return sendJSON(res, 200, { ok: true, kasbon: entry });
+    }
+    // Riwayat kasbon milik karyawan sendiri + sisa.
+    if (pathName === '/api/my-kasbon' && req.method === 'GET') {
+      const phone = String(url.searchParams.get('phone') || '').trim();
+      const kasbonList = readJSON(KASBON_FILE).filter((k) => k.phone === phone);
+      const payments = readJSON(KASBON_PAYMENTS_FILE);
+      const result = kasbonList.map((k) => {
+        const dibayar = payments.filter((p) => p.kasbonId === k.id).reduce((s, p) => s + p.jumlah, 0);
+        return { ...k, dibayar, sisa: Math.max(0, k.jumlah - dibayar) };
+      }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return sendJSON(res, 200, { kasbon: result });
+    }
+    // Admin: daftar semua kasbon + sisa per karyawan (dipakai menu Kasbon & Dashboard).
+    if (pathName === '/api/kasbon' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const kasbonList = readJSON(KASBON_FILE);
+      const payments = readJSON(KASBON_PAYMENTS_FILE);
+      const result = kasbonList.map((k) => {
+        const dibayar = payments.filter((p) => p.kasbonId === k.id).reduce((s, p) => s + p.jumlah, 0);
+        return { ...k, dibayar, sisa: Math.max(0, k.jumlah - dibayar) };
+      }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return sendJSON(res, 200, { kasbon: result });
+    }
+    // Admin: setujui pengajuan kasbon.
+    if (pathName.startsWith('/api/kasbon/') && pathName.endsWith('/approve') && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const kasbonList = readJSON(KASBON_FILE);
+      const k = kasbonList.find((x) => x.id === id);
+      if (!k) return sendJSON(res, 404, { error: 'Kasbon tidak ditemukan' });
+      k.status = 'disetujui';
+      writeJSON(KASBON_FILE, kasbonList);
+      return sendJSON(res, 200, { ok: true });
+    }
+    // Admin: catat pembayaran/cicilan kasbon (dipotong dari gaji atau dibayar manual).
+    if (pathName.startsWith('/api/kasbon/') && pathName.endsWith('/bayar') && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const kasbonList = readJSON(KASBON_FILE);
+      const k = kasbonList.find((x) => x.id === id);
+      if (!k) return sendJSON(res, 404, { error: 'Kasbon tidak ditemukan' });
+      const payments = readJSON(KASBON_PAYMENTS_FILE);
+      const dibayarSoFar = payments.filter((p) => p.kasbonId === id).reduce((s, p) => s + p.jumlah, 0);
+      const sisa = Math.max(0, k.jumlah - dibayarSoFar);
+      let jumlah = Number(body.jumlah);
+      if (k.jenis === 'potlang' || !jumlah) jumlah = sisa; // potlang selalu lunas sekaligus
+      if (jumlah <= 0) return sendJSON(res, 400, { error: 'Tidak ada sisa kasbon untuk dibayar.' });
+      if (jumlah > sisa) jumlah = sisa;
+      payments.push({
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        kasbonId: id, phone: k.phone, employee: k.employee, jumlah,
+        tanggal: body.tanggal || dateKeyJakarta(new Date().toISOString()),
+        createdAt: new Date().toISOString(),
+      });
+      writeJSON(KASBON_PAYMENTS_FILE, payments);
+      if (jumlah >= sisa) { k.status = 'lunas'; writeJSON(KASBON_FILE, kasbonList); }
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // ---- Dashboard: ringkasan live hari ini ----
+    if (pathName === '/api/dashboard-summary' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const todayKey = dateKeyJakarta(new Date().toISOString());
+      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey === todayKey)
+        .sort((a, b) => (a.timeHHMM < b.timeHHMM ? 1 : -1));
+      const kasbonToday = readJSON(KASBON_FILE).filter((k) => k.tanggal === todayKey)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      const karyawanMasuk = new Set(records.filter((r) => r.type === 'masuk').map((r) => r.employee)).size;
+      const leavesToday = readJSON(LEAVES_FILE).filter((l) => l.status === 'approved' && l.startDate <= todayKey && todayKey <= l.endDate);
+      return sendJSON(res, 200, {
+        date: todayKey,
+        totalKaryawan: config.employees.filter((e) => e.status !== 'nonaktif').length,
+        karyawanMasuk,
+        karyawanCuti: leavesToday.length,
+        recentRecords: records.slice(0, 15).map((r) => ({
+          employee: r.employee, type: r.type, timeHHMM: r.timeHHMM, nearestLocation: r.nearestLocation,
+        })),
+        kasbonToday: kasbonToday.map((k) => ({ employee: k.employee, jenis: k.jenis, jumlah: k.jumlah, status: k.status })),
+      });
     }
 
     // ---- Static files (halaman) ----

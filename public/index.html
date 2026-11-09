@@ -17,6 +17,15 @@
   .brand-head .sub { margin-bottom: 0; }
   .brand-logo { height: 52px; width: auto; flex-shrink: 0; }
   .sub { color: #666; font-size: 14px; margin-bottom: 20px; }
+
+  /* ---- Layar Masuk (login) ---- */
+  .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .login-card { background:#fff; border-radius:20px; padding:32px 28px; box-shadow:0 4px 20px rgba(74,24,67,0.12); width:100%; max-width:360px; text-align:center; }
+  .login-logo-circle { width:72px; height:72px; border-radius:50%; background:#faf5ec; border:2px solid #e7d9cf; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .login-logo-circle img { width:100%; height:100%; object-fit:cover; }
+  .login-card h1 { font-size:20px; margin:0 0 4px; color:#4a1843; }
+  .login-card .sub { font-size:13px; color:#8a7b85; margin-bottom:20px; }
+  .login-card label { text-align:left; }
   .card { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; }
   label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #333; }
   input[type=text], input[type=tel] {
@@ -138,24 +147,38 @@
     .slip-col + .slip-col { border-left:none; border-top:1.5px solid #e9ddf0; }
     .slip-line .sl-lbl { white-space:nowrap; }
   }
+
+  /* ---- Ijin/Cuti & Kasbon ---- */
+  .menu-row-2 { display:flex; gap:10px; margin-bottom: 10px; }
+  .menu-row-2 .btn { flex:1; margin-bottom:0; }
+  select.form-select { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; background:#fff; }
+  textarea.form-textarea { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; font-family:inherit; resize:vertical; min-height:70px; }
+  .list-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
+  .list-card .lc-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .list-card .lc-title { font-weight:700; font-size:14px; }
+  .list-card .lc-meta { font-size:12px; color:#888; margin-top:2px; }
+  .lc-badge { padding:3px 9px; border-radius:10px; font-size:11px; font-weight:700; }
+  .lc-badge.pending { background:#fef7e0; color:#b06000; }
+  .lc-badge.approved { background:#e6f4ea; color:#137333; }
+  .lc-badge.rejected { background:#fce8e6; color:#c5221f; }
+  .lc-badge.lunas { background:#e6f4ea; color:#137333; }
+  .lc-badge.disetujui { background:#e3eefc; color:#1a56b0; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="brand-head">
-    <img src="/logo.png" alt="Erly's Cake & Bakery" class="brand-logo" />
-    <div>
-      <h1>Absensi Karyawan</h1>
-      <div class="sub">Absen dengan foto, lokasi, dan waktu otomatis</div>
-    </div>
-  </div>
-
-  <div class="card" id="phoneCard">
+<div class="login-wrap" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo-circle"><img src="/logo.png" alt="Erly's Cake & Bakery" /></div>
+    <h1>Masuk</h1>
+    <div class="sub">Absensi Erly's Cake &amp; Bakery</div>
     <label>Nomor Telepon</label>
     <input type="tel" id="phoneInput" placeholder="Contoh: 081234567890" inputmode="numeric" />
     <button class="btn btn-primary" id="checkPhoneBtn">Lanjutkan</button>
     <div class="status" id="phoneStatus"></div>
   </div>
+</div>
+
+<div class="wrap" id="mainWrap" style="display:none">
 
   <div class="card" id="actionCard" style="display:none">
     <div class="profile-head">
@@ -200,8 +223,14 @@
     <div id="historyList"></div>
     <div class="hint" id="historyEmpty"></div>
 
-    <button class="btn btn-secondary" id="lihatSlipGaji" style="margin-top:4px">Slip Gaji</button>
-    <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
+    <div class="menu-row-2" style="margin-top:4px">
+      <button class="btn btn-secondary" id="lihatSlipGaji">Slip Gaji</button>
+      <button class="btn btn-secondary" id="bukaIjinCuti">Ijin/Cuti</button>
+    </div>
+    <div class="menu-row-2">
+      <button class="btn btn-secondary" id="bukaKasbon">Kasbon</button>
+      <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
+    </div>
   </div>
 
   <div class="card" id="payslipCard" style="display:none">
@@ -215,6 +244,51 @@
       <button type="button" id="slipNext" title="Periode berikutnya">&#8250;</button>
     </div>
     <div id="slipBody"></div>
+  </div>
+
+  <div class="card" id="leaveCard" style="display:none">
+    <div class="slip-head">
+      <div class="sh-title">Ijin / Cuti</div>
+      <button class="btn btn-secondary" id="tutupLeave" style="width:auto; padding:8px 14px; margin:0; font-size:13px">Tutup</button>
+    </div>
+    <label>Jenis</label>
+    <select class="form-select" id="leaveType">
+      <option value="sakit">Sakit</option>
+      <option value="cuti">Cuti</option>
+      <option value="izin">Izin Lainnya</option>
+    </select>
+    <label>Tanggal Mulai</label>
+    <input type="date" id="leaveStart" />
+    <label>Tanggal Selesai</label>
+    <input type="date" id="leaveEnd" />
+    <label>Alasan (opsional)</label>
+    <textarea class="form-textarea" id="leaveReason" placeholder="Tuliskan alasan singkat..."></textarea>
+    <button class="btn btn-primary" id="submitLeaveBtn">Ajukan</button>
+    <div class="status" id="leaveStatus"></div>
+    <div class="muted" style="margin:14px 0 6px">Riwayat Pengajuan</div>
+    <div id="leaveList"></div>
+    <div class="hint" id="leaveEmpty"></div>
+  </div>
+
+  <div class="card" id="kasbonCard" style="display:none">
+    <div class="slip-head">
+      <div class="sh-title">Kasbon</div>
+      <button class="btn btn-secondary" id="tutupKasbon" style="width:auto; padding:8px 14px; margin:0; font-size:13px">Tutup</button>
+    </div>
+    <label>Jenis Pembayaran</label>
+    <select class="form-select" id="kasbonJenis">
+      <option value="cicil">Cicil (potong gaji bertahap)</option>
+      <option value="potlang">Potong Langsung (lunas sekaligus)</option>
+    </select>
+    <label>Jumlah Pinjaman (Rp)</label>
+    <input type="text" id="kasbonJumlah" inputmode="numeric" placeholder="Contoh: 500000" />
+    <label>Catatan (opsional)</label>
+    <textarea class="form-textarea" id="kasbonCatatan" placeholder="Keperluan kasbon..."></textarea>
+    <button class="btn btn-primary" id="submitKasbonBtn">Ajukan</button>
+    <div class="status" id="kasbonStatus"></div>
+    <div class="muted" style="margin:14px 0 6px">Riwayat Kasbon</div>
+    <div id="kasbonList"></div>
+    <div class="hint" id="kasbonEmpty"></div>
   </div>
 
   <div class="card" id="shiftCard" style="display:none">
@@ -231,7 +305,8 @@
 </div>
 
 <script>
-const phoneCard = document.getElementById('phoneCard');
+const loginScreen = document.getElementById('loginScreen');
+const mainWrap = document.getElementById('mainWrap');
 const actionCard = document.getElementById('actionCard');
 const shiftCard = document.getElementById('shiftCard');
 const phoneInput = document.getElementById('phoneInput');
@@ -275,7 +350,8 @@ document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
     if (data.photoUrl) { avatarEl.src = data.photoUrl; avatarEl.style.visibility = 'visible'; }
     else { avatarEl.style.visibility = 'hidden'; }
 
-    phoneCard.style.display = 'none';
+    loginScreen.style.display = 'none';
+    mainWrap.style.display = 'block';
     actionCard.style.display = 'block';
     phoneStatus.style.display = 'none';
 
@@ -285,10 +361,13 @@ document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
     showStatus(phoneStatus, 'Gagal menghubungi server: ' + e.message, 'err');
   }
 });
+document.getElementById('phoneInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('checkPhoneBtn').click();
+});
 
 document.getElementById('gantiNomor').addEventListener('click', () => {
-  actionCard.style.display = 'none';
-  phoneCard.style.display = 'block';
+  mainWrap.style.display = 'none';
+  loginScreen.style.display = 'flex';
   preview.style.display = 'none';
   actionStatus.style.display = 'none';
 });
@@ -699,6 +778,137 @@ photoInput.addEventListener('change', async () => {
     showStatus(actionStatus, e.message, 'err');
   }
 });
+
+// ---- Ijin/Cuti ----
+const leaveCard = document.getElementById('leaveCard');
+const leaveTypeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin Lainnya' };
+const leaveStatusLabel = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
+
+document.getElementById('bukaIjinCuti').addEventListener('click', () => {
+  actionCard.style.display = 'none';
+  leaveCard.style.display = 'block';
+  document.getElementById('leaveStatus').style.display = 'none';
+  loadMyLeaves();
+});
+document.getElementById('tutupLeave').addEventListener('click', () => {
+  leaveCard.style.display = 'none';
+  actionCard.style.display = 'block';
+});
+
+document.getElementById('submitLeaveBtn').addEventListener('click', async () => {
+  const leaveStatusEl = document.getElementById('leaveStatus');
+  const type = document.getElementById('leaveType').value;
+  const startDate = document.getElementById('leaveStart').value;
+  const endDate = document.getElementById('leaveEnd').value;
+  const reason = document.getElementById('leaveReason').value.trim();
+  if (!startDate || !endDate) return showStatus(leaveStatusEl, 'Tanggal mulai dan selesai wajib diisi', 'err');
+  showStatus(leaveStatusEl, 'Mengirim pengajuan...', 'warn');
+  try {
+    const res = await fetch('/api/leaves', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: currentPhone, type, startDate, endDate, reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) return showStatus(leaveStatusEl, data.error || 'Gagal mengajukan', 'err');
+    showStatus(leaveStatusEl, 'Pengajuan berhasil dikirim, menunggu persetujuan admin.', 'ok');
+    document.getElementById('leaveReason').value = '';
+    loadMyLeaves();
+  } catch (e) {
+    showStatus(leaveStatusEl, 'Gagal mengirim: ' + e.message, 'err');
+  }
+});
+
+async function loadMyLeaves() {
+  const listEl = document.getElementById('leaveList');
+  const emptyEl = document.getElementById('leaveEmpty');
+  listEl.innerHTML = '';
+  emptyEl.textContent = 'Memuat...';
+  try {
+    const res = await fetch(`/api/my-leaves?phone=${encodeURIComponent(currentPhone)}`);
+    const data = await res.json();
+    const leaves = data.leaves || [];
+    emptyEl.textContent = leaves.length === 0 ? 'Belum ada pengajuan.' : '';
+    leaves.forEach((l) => {
+      const card = document.createElement('div');
+      card.className = 'list-card';
+      card.innerHTML = `
+        <div class="lc-top">
+          <span class="lc-title">${leaveTypeLabel[l.type] || l.type}</span>
+          <span class="lc-badge ${l.status}">${leaveStatusLabel[l.status] || l.status}</span>
+        </div>
+        <div class="lc-meta">${l.startDate} s.d. ${l.endDate}${l.reason ? ' • ' + l.reason : ''}</div>
+      `;
+      listEl.appendChild(card);
+    });
+  } catch (e) {
+    emptyEl.textContent = 'Gagal memuat riwayat: ' + e.message;
+  }
+}
+
+// ---- Kasbon ----
+const kasbonCard = document.getElementById('kasbonCard');
+const kasbonStatusLabel = { pending: 'Menunggu', disetujui: 'Disetujui', lunas: 'Lunas' };
+
+document.getElementById('bukaKasbon').addEventListener('click', () => {
+  actionCard.style.display = 'none';
+  kasbonCard.style.display = 'block';
+  document.getElementById('kasbonStatus').style.display = 'none';
+  loadMyKasbon();
+});
+document.getElementById('tutupKasbon').addEventListener('click', () => {
+  kasbonCard.style.display = 'none';
+  actionCard.style.display = 'block';
+});
+
+document.getElementById('submitKasbonBtn').addEventListener('click', async () => {
+  const kasbonStatusEl = document.getElementById('kasbonStatus');
+  const jenis = document.getElementById('kasbonJenis').value;
+  const jumlah = Number(document.getElementById('kasbonJumlah').value.replace(/[^0-9]/g, ''));
+  const catatan = document.getElementById('kasbonCatatan').value.trim();
+  if (!jumlah || jumlah <= 0) return showStatus(kasbonStatusEl, 'Jumlah pinjaman harus lebih dari 0', 'err');
+  showStatus(kasbonStatusEl, 'Mengirim pengajuan...', 'warn');
+  try {
+    const res = await fetch('/api/kasbon', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: currentPhone, jenis, jumlah, catatan }),
+    });
+    const data = await res.json();
+    if (!res.ok) return showStatus(kasbonStatusEl, data.error || 'Gagal mengajukan', 'err');
+    showStatus(kasbonStatusEl, 'Pengajuan kasbon berhasil dikirim, menunggu persetujuan admin.', 'ok');
+    document.getElementById('kasbonJumlah').value = '';
+    document.getElementById('kasbonCatatan').value = '';
+    loadMyKasbon();
+  } catch (e) {
+    showStatus(kasbonStatusEl, 'Gagal mengirim: ' + e.message, 'err');
+  }
+});
+
+async function loadMyKasbon() {
+  const listEl = document.getElementById('kasbonList');
+  const emptyEl = document.getElementById('kasbonEmpty');
+  listEl.innerHTML = '';
+  emptyEl.textContent = 'Memuat...';
+  try {
+    const res = await fetch(`/api/my-kasbon?phone=${encodeURIComponent(currentPhone)}`);
+    const data = await res.json();
+    const kasbon = data.kasbon || [];
+    emptyEl.textContent = kasbon.length === 0 ? 'Belum ada pengajuan kasbon.' : '';
+    kasbon.forEach((k) => {
+      const card = document.createElement('div');
+      card.className = 'list-card';
+      card.innerHTML = `
+        <div class="lc-top">
+          <span class="lc-title">${formatRupiah(k.jumlah)} <span class="muted">(${k.jenis})</span></span>
+          <span class="lc-badge ${k.status}">${kasbonStatusLabel[k.status] || k.status}</span>
+        </div>
+        <div class="lc-meta">Sisa: ${formatRupiah(k.sisa)}${k.catatan ? ' • ' + k.catatan : ''}</div>
+      `;
+      listEl.appendChild(card);
+    });
+  } catch (e) {
+    emptyEl.textContent = 'Gagal memuat riwayat: ' + e.message;
+  }
+}
 </script>
 </body>
 </html>
