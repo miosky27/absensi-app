@@ -1178,7 +1178,22 @@ const server = http.createServer(async (req, res) => {
 
       const payroll = computePayrollSummary(records, config, from, to);
 
-      return sendJSON(res, 200, { from, to, summary, detail, payroll });
+      // Daftar kasbon yang masih aktif (belum lunas) per karyawan, untuk transparansi potongan
+      // kasbon di laporan gaji (termasuk cicilan per bulan yang disepakati).
+      const kasbonAll = readJSON(KASBON_FILE);
+      const kasbonPayments = readJSON(KASBON_PAYMENTS_FILE);
+      const kasbonAktif = kasbonAll
+        .filter((k) => k.status !== 'ditolak' && k.status !== 'lunas')
+        .map((k) => {
+          const dibayar = kasbonPayments.filter((p) => p.kasbonId === k.id).reduce((s, p) => s + p.jumlah, 0);
+          return {
+            employee: k.employee, jenis: k.jenis, jumlah: k.jumlah,
+            cicilanPerBulan: k.cicilanPerBulan || null, dibayar, sisa: Math.max(0, k.jumlah - dibayar),
+            status: k.status, catatan: k.catatan || '',
+          };
+        });
+
+      return sendJSON(res, 200, { from, to, summary, detail, payroll, kasbonAktif });
     }
 
     if (pathName === '/api/config' && req.method === 'GET') {
