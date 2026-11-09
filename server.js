@@ -1,6 +1,7 @@
 // Aplikasi Absensi Karyawan — server ringan tanpa dependensi eksternal
 // Jalankan: node server.js
-// Env opsional: PORT, ADMIN_PASSWORD
+// Env opsional: PORT, ADMIN_PASSWORD, DATA_DIR (lokasi penyimpanan data persisten,
+// contoh di Render: /var/data jika sudah pasang Persistent Disk dengan mount path tersebut)
 
 const http = require('http');
 const fs = require('fs');
@@ -8,7 +9,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.DATA_DIR
+  ? process.env.DATA_DIR
+  : path.join(ROOT, 'data');
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const EMPLOYEE_PHOTOS_DIR = path.join(DATA_DIR, 'employee-photos');
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -21,8 +24,10 @@ const PORT = process.env.PORT || 3000;
 function ensureFile(file, defaultValue) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(defaultValue, null, 2));
 }
-ensureFile(RECORDS_FILE, []);
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(PHOTOS_DIR)) fs.mkdirSync(PHOTOS_DIR, { recursive: true });
 if (!fs.existsSync(EMPLOYEE_PHOTOS_DIR)) fs.mkdirSync(EMPLOYEE_PHOTOS_DIR, { recursive: true });
+ensureFile(RECORDS_FILE, []);
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
   // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
