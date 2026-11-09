@@ -219,11 +219,6 @@ async function loadDaily() {
 
   const tbody = document.querySelector('#dailyTable tbody');
   tbody.innerHTML = '';
-  if (records.length === 0) {
-    document.getElementById('dailyEmpty').textContent = 'Belum ada absen di tanggal ini.';
-    return;
-  }
-  document.getElementById('dailyEmpty').textContent = '';
   for (const r of records.sort((a,b) => a.timeHHMM.localeCompare(b.timeHHMM))) {
     const tr = document.createElement('tr');
     const photoUrl = '/api/photo/' + r.photoFilename + '?t=' + token;
@@ -236,6 +231,24 @@ async function loadDaily() {
     `;
     tbody.appendChild(tr);
   }
+
+  // Karyawan terdaftar yang belum absen masuk sama sekali pada tanggal ini.
+  const masukNames = new Set(records.filter((r) => r.type === 'masuk').map((r) => r.employee));
+  const belumAbsen = currentEmployees.filter((e) => e.name && !masukNames.has(e.name));
+  for (const emp of belumAbsen) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>—</td>
+      <td>${emp.name}</td>
+      <td>—</td>
+      <td><span class="badge bad">Tidak Absen Masuk</span></td>
+      <td>—</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('dailyEmpty').textContent =
+    (records.length === 0 && belumAbsen.length === 0) ? 'Belum ada data karyawan.' : '';
 }
 
 let currentWorkStart = '08:00'; // fallback kalau record tidak punya data shift (data lama)
