@@ -637,6 +637,31 @@ const server = http.createServer(async (req, res) => {
       const todayLemburMasuk = todayRecords.find((r) => r.type === 'lembur_masuk');
       const todayLemburKeluar = todayRecords.find((r) => r.type === 'lembur_keluar');
 
+      // Ijin/Cuti disetujui yang jatuh di bulan ini (untuk kartu ringkasan "Ijin").
+      const [sy, sm] = month.split('-').map(Number);
+      const monthStart = `${month}-01`;
+      const monthEndDate = new Date(sy, sm, 0).getDate();
+      const monthEnd = `${month}-${String(monthEndDate).padStart(2, '0')}`;
+      const myLeaves = readJSON(LEAVES_FILE).filter((l) => l.phone === phone && l.status === 'approved');
+      const ijinDateSet = new Set();
+      myLeaves.forEach((l) => {
+        if (l.endDate < monthStart || l.startDate > monthEnd) return;
+        const from = l.startDate < monthStart ? monthStart : l.startDate;
+        const to = l.endDate > monthEnd ? monthEnd : l.endDate;
+        let cur = new Date(from + 'T00:00:00');
+        const end = new Date(to + 'T00:00:00');
+        while (cur <= end) {
+          ijinDateSet.add(dateKeyJakarta(cur.toISOString()));
+          cur.setDate(cur.getDate() + 1);
+        }
+      });
+      const ijinHari = ijinDateSet.size;
+
+      // Tidak Hadir: hari berjalan bulan ini (s.d. hari ini kalau bulan sekarang) dikurangi hadir & ijin.
+      const nowKey = dateKeyJakarta(new Date().toISOString());
+      const elapsedDay = month === nowKey.slice(0, 7) ? Number(nowKey.slice(8, 10)) : monthEndDate;
+      const tidakHadir = Math.max(0, elapsedDay - hariHadirSet.size - ijinHari);
+
       return sendJSON(res, 200, {
         name: emp.name,
         idNumber: emp.idNumber || '',
@@ -650,6 +675,8 @@ const server = http.createServer(async (req, res) => {
           hariHadir: hariHadirSet.size,
           terlambatJam: Math.floor(terlambatMenit / 60),
           terlambatMenit: terlambatMenit % 60,
+          tidakHadir,
+          ijin: ijinHari,
         },
         today: {
           dateKey: todayKey,
@@ -1269,6 +1296,25 @@ const server = http.createServer(async (req, res) => {
       }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return sendJSON(res, 200, { kasbon: result });
     }
+    // Riwayat notifikasi milik karyawan sendiri (status pengajuan cuti/ijin & kasbon).
+    if (pathName === '/api/my-notifications' && req.method === 'GET') {
+      const phone = String(url.searchParams.get('phone') || '').trim();
+      const notifications = readJSON(NOTIFICATIONS_FILE)
+        .filter((n) => n.phone === phone)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      return sendJSON(res, 200, { notifications });
+    }
+    // Tandai semua notifikasi milik karyawan sebagai sudah dibaca.
+    if (pathName === '/api/notifications/mark-read' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const phone = String(body.phone || '').trim();
+      const notifications = readJSON(NOTIFICATIONS_FILE);
+      let changed = false;
+      notifications.forEach((n) => { if (n.phone === phone && !n.read) { n.read = true; changed = true; } });
+      if (changed) writeJSON(NOTIFICATIONS_FILE, notifications);
+      return sendJSON(res, 200, { ok: true });
+    }
+
     // Admin: daftar semua kasbon + sisa per karyawan (dipakai menu Kasbon & Dashboard).
     if (pathName === '/api/kasbon' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
