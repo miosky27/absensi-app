@@ -3,19 +3,21 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Admin Absensi</title>
+<title>Admin Absensi - Erly's Cake & Bakery</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background:#f4f6f8; color:#1a1a1a; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background:#faf5ec; color:#2a1a26; }
   .wrap { max-width: 760px; margin: 0 auto; padding: 20px 14px 60px; }
-  h1 { font-size: 20px; margin: 0 0 16px; }
+  h1 { font-size: 18px; margin: 0; color:#4a1843; }
+  .brand-head { display:flex; align-items:center; gap:12px; margin-bottom: 16px; }
+  .brand-logo { height: 44px; width: auto; flex-shrink: 0; }
   .card { background:#fff; border-radius: 14px; padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom:16px; }
   input, select { padding: 10px 12px; border:1px solid #ddd; border-radius: 8px; font-size: 14px; }
-  .btn { padding: 10px 16px; border:none; border-radius: 8px; background:#1a73e8; color:#fff; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn { padding: 10px 16px; border:none; border-radius: 8px; background:#702464; color:#fff; font-weight:600; cursor:pointer; font-size:14px; }
   .btn.secondary { background:#e8eaed; color:#1a1a1a; }
   .tabs { display:flex; gap:8px; margin-bottom: 16px; flex-wrap: wrap; }
   .tab { padding: 8px 14px; border-radius: 20px; background:#e8eaed; cursor:pointer; font-size:13px; font-weight:600; }
-  .tab.active { background:#1a73e8; color:#fff; }
+  .tab.active { background:#702464; color:#fff; }
   table { width:100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 8px 6px; border-bottom: 1px solid #eee; text-align:left; }
   th { color:#666; font-weight:600; }
@@ -29,7 +31,7 @@
   .section-title { font-size: 14px; font-weight:700; margin: 18px 0 8px; }
   .emp-card { border:1px solid #eee; border-radius:10px; padding:10px; margin-bottom:10px; }
   .emp-card-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .emp-avatar { background:#f4f6f8; border:1px solid #eee; }
+  .emp-avatar { background:#f3ead8; border:1px solid #eee; }
   .emp-row { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
   .emp-row input { flex: 1; min-width: 100px; }
   .loc-row { display:flex; gap:8px; margin-bottom:8px; flex-wrap: wrap; }
@@ -45,13 +47,16 @@
   .sc-ontime { background:#e6f4ea; color:#137333; }
   .sc-late { background:#fef7e0; color:#b06000; }
   .sc-absent { background:#fce8e6; color:#c5221f; }
-  .sc-total { background:#e8f0fe; color:#1a73e8; }
+  .sc-total { background:#f1e3ee; color:#702464; }
   .sc-overtime { background:#f3e8fd; color:#8430ce; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🔐 Admin Absensi</h1>
+  <div class="brand-head">
+    <img src="/logo.png" alt="Erly's Cake & Bakery" class="brand-logo" />
+    <h1>Admin Absensi</h1>
+  </div>
 
   <div class="card" id="loginCard">
     <div class="field"><label>Password Admin</label><input type="password" id="pwInput" /></div>

@@ -3,16 +3,19 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-<title>Absensi Karyawan</title>
+<title>Absensi Erly's Cake & Bakery</title>
 <link rel="manifest" href="/manifest.json" />
 <style>
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    background: #f4f6f8; color: #1a1a1a; min-height: 100vh;
+    background: #faf5ec; color: #2a1a26; min-height: 100vh;
   }
   .wrap { max-width: 480px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 { font-size: 18px; margin: 0 0 2px; color:#4a1843; }
+  .brand-head { display:flex; align-items:center; gap:12px; margin-bottom: 20px; }
+  .brand-head .sub { margin-bottom: 0; }
+  .brand-logo { height: 52px; width: auto; flex-shrink: 0; }
   .sub { color: #666; font-size: 14px; margin-bottom: 20px; }
   .card { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; }
   label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #333; }
@@ -23,7 +26,7 @@
     width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600;
     cursor: pointer; margin-bottom: 10px;
   }
-  .btn-primary { background: #1a73e8; color: #fff; }
+  .btn-primary { background: #702464; color: #fff; }
   .btn-secondary { background: #e8eaed; color: #1a1a1a; }
   .btn:disabled { opacity: 0.5; }
   .row-2 { display: flex; gap: 10px; }
@@ -34,13 +37,13 @@
   .status.warn { background: #fef7e0; color: #b06000; display: block; }
   .status.err { background: #fce8e6; color: #c5221f; display: block; }
   .muted { color: #888; font-size: 12px; }
-  .name-tag { font-weight: 700; color: #1a73e8; }
+  .name-tag { font-weight: 700; color: #702464; }
   a.admin-link { display: block; text-align: center; margin-top: 10px; font-size: 13px; color: #888; }
   .shift-option {
     width: 100%; text-align: left; padding: 14px; border: 1.5px solid #ddd; border-radius: 10px;
     background: #fff; margin-bottom: 10px; cursor: pointer; font-size: 15px;
   }
-  .shift-option:active { background: #e8f0fe; border-color: #1a73e8; }
+  .shift-option:active { background: #f1e3ee; border-color: #702464; }
   .shift-option .shift-time { display:block; font-size: 13px; color: #666; margin-top: 2px; }
   .hist-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eee; font-size:14px; }
   .hist-row:last-child { border-bottom: none; }
@@ -57,11 +60,11 @@
   .profile-info .pname { font-weight:700; font-size:16px; }
   .profile-info .pmeta { font-size:12px; color:#666; margin-top:2px; }
   .stat-row { display:flex; gap:10px; margin-bottom:16px; }
-  .stat-box { flex:1; background:#f4f6f8; border-radius:12px; padding:12px 8px; text-align:center; }
+  .stat-box { flex:1; background:#f3ead8; border-radius:12px; padding:12px 8px; text-align:center; }
   .stat-box .snum { font-size:18px; font-weight:800; color:#1a1a1a; }
   .stat-box .slbl { font-size:11px; color:#666; margin-top:2px; }
-  .today-card { background:linear-gradient(135deg,#1a73e8,#1557b0); border-radius:14px; padding:14px; margin-bottom:16px; }
-  .today-card .tc-label { color:#cfe0fb; font-size:12px; margin-bottom:10px; }
+  .today-card { background:linear-gradient(135deg,#8a3380,#5c1d52); border-radius:14px; padding:14px; margin-bottom:16px; }
+  .today-card .tc-label { color:#f1dcec; font-size:12px; margin-bottom:10px; }
   .today-row { display:flex; gap:10px; }
   .today-box {
     flex:1; border-radius:10px; padding:12px; border:none; text-align:left; cursor:pointer;
@@ -71,7 +74,7 @@
   .today-box.out { background:rgba(255,255,255,0.18); }
   .today-box:active { background:rgba(255,255,255,0.3); }
   .today-box:disabled { cursor:default; opacity:0.85; }
-  .today-box .tb-lbl { color:#e8f0fe; font-size:11px; font-weight:600; }
+  .today-box .tb-lbl { color:#f3e4ef; font-size:11px; font-weight:600; }
   .today-box .tb-time { color:#fff; font-size:16px; font-weight:800; margin-top:2px; }
   .day-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
   .day-card .dc-date { font-weight:700; font-size:13px; margin-bottom:8px; }
@@ -83,8 +86,13 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>📍 Absensi Karyawan</h1>
-  <div class="sub">Absen dengan foto, lokasi, dan waktu otomatis</div>
+  <div class="brand-head">
+    <img src="/logo.png" alt="Erly's Cake & Bakery" class="brand-logo" />
+    <div>
+      <h1>Absensi Karyawan</h1>
+      <div class="sub">Absen dengan foto, lokasi, dan waktu otomatis</div>
+    </div>
+  </div>
 
   <div class="card" id="phoneCard">
     <label>Nomor Telepon</label>

@@ -1,9 +1,11 @@
 {
-  "name": "Absensi Karyawan",
+  "name": "Absensi Erly's Cake & Bakery",
   "short_name": "Absensi",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f6f8",
-  "theme_color": "#1a73e8",
-  "icons": []
+  "background_color": "#faf5ec",
+  "theme_color": "#702464",
+  "icons": [
+    { "src": "/logo.png", "sizes": "473x305", "type": "image/png" }
+  ]
 }
