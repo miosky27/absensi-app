@@ -21,7 +21,7 @@
   /* ---- Layar Masuk (login) ---- */
   .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
   .login-card { background:#fff; border-radius:20px; padding:32px 28px; box-shadow:0 4px 20px rgba(74,24,67,0.12); width:100%; max-width:360px; text-align:center; position:relative; }
-  .admin-entry-link { position:absolute; top:16px; right:18px; font-size:12px; color:#702464; font-weight:600; text-decoration:none; }
+  .admin-entry-link { display:block; margin-top:14px; font-size:13px; color:#702464; font-weight:600; text-decoration:none; }
   .login-logo-circle { width:auto; height:90px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; }
   .login-logo-circle img { max-width:220px; max-height:90px; width:auto; height:auto; object-fit:contain; }
   .login-card h1 { font-size:20px; margin:0 0 4px; color:#4a1843; }
@@ -164,18 +164,20 @@
   .lc-badge.rejected { background:#fce8e6; color:#c5221f; }
   .lc-badge.lunas { background:#e6f4ea; color:#137333; }
   .lc-badge.disetujui { background:#e3eefc; color:#1a56b0; }
+  .estimasi-lunas { background:#f3ead8; border-radius:10px; padding:10px 14px; font-size:13px; color:#4a1843; margin:-4px 0 14px; }
+  .estimasi-lunas b { font-size:14px; }
 </style>
 </head>
 <body>
 <div class="login-wrap" id="loginScreen">
   <div class="login-card">
-    <a class="admin-entry-link" href="/admin.html">Masuk sebagai Admin</a>
     <div class="login-logo-circle"><img src="/logo.png" alt="Erly's Cake & Bakery" /></div>
     <h1>Masuk</h1>
     <div class="sub">Absensi Erly's Cake &amp; Bakery</div>
     <label>Nomor Telepon</label>
     <input type="tel" id="phoneInput" placeholder="Contoh: 081234567890" inputmode="numeric" />
     <button class="btn btn-primary" id="checkPhoneBtn">Lanjutkan</button>
+    <a class="admin-entry-link" href="/admin.html">Masuk sebagai Admin</a>
     <div class="status" id="phoneStatus"></div>
   </div>
 </div>
@@ -284,6 +286,11 @@
     </select>
     <label>Jumlah Pinjaman (Rp)</label>
     <input type="text" id="kasbonJumlah" inputmode="numeric" placeholder="Contoh: 500000" />
+    <div id="kasbonCicilWrap">
+      <label>Cicilan per Bulan (Rp)</label>
+      <input type="text" id="kasbonCicilanPerBulan" inputmode="numeric" placeholder="Contoh: 100000" />
+      <div class="estimasi-lunas" id="kasbonEstimasi" style="display:none"></div>
+    </div>
     <label>Catatan (opsional)</label>
     <textarea class="form-textarea" id="kasbonCatatan" placeholder="Keperluan kasbon..."></textarea>
     <button class="btn btn-primary" id="submitKasbonBtn">Ajukan</button>
@@ -855,6 +862,7 @@ document.getElementById('bukaKasbon').addEventListener('click', () => {
   actionCard.style.display = 'none';
   kasbonCard.style.display = 'block';
   document.getElementById('kasbonStatus').style.display = 'none';
+  updateKasbonCicilVisibility();
   loadMyKasbon();
 });
 document.getElementById('tutupKasbon').addEventListener('click', () => {
@@ -862,23 +870,51 @@ document.getElementById('tutupKasbon').addEventListener('click', () => {
   actionCard.style.display = 'block';
 });
 
+// ---- Field "Cicilan per Bulan" hanya relevan untuk jenis Cicil ----
+function updateKasbonCicilVisibility() {
+  const isCicil = document.getElementById('kasbonJenis').value === 'cicil';
+  document.getElementById('kasbonCicilWrap').style.display = isCicil ? 'block' : 'none';
+  updateKasbonEstimasi();
+}
+function updateKasbonEstimasi() {
+  const estimasiEl = document.getElementById('kasbonEstimasi');
+  const jumlah = Number(document.getElementById('kasbonJumlah').value.replace(/[^0-9]/g, ''));
+  const cicilan = Number(document.getElementById('kasbonCicilanPerBulan').value.replace(/[^0-9]/g, ''));
+  if (jumlah > 0 && cicilan > 0) {
+    const bulan = Math.ceil(jumlah / cicilan);
+    estimasiEl.style.display = 'block';
+    estimasiEl.innerHTML = `Estimasi lunas dalam <b>${bulan} bulan</b>`;
+  } else {
+    estimasiEl.style.display = 'none';
+  }
+}
+document.getElementById('kasbonJenis').addEventListener('change', updateKasbonCicilVisibility);
+document.getElementById('kasbonJumlah').addEventListener('input', updateKasbonEstimasi);
+document.getElementById('kasbonCicilanPerBulan').addEventListener('input', updateKasbonEstimasi);
+
 document.getElementById('submitKasbonBtn').addEventListener('click', async () => {
   const kasbonStatusEl = document.getElementById('kasbonStatus');
   const jenis = document.getElementById('kasbonJenis').value;
   const jumlah = Number(document.getElementById('kasbonJumlah').value.replace(/[^0-9]/g, ''));
+  const cicilanPerBulan = Number(document.getElementById('kasbonCicilanPerBulan').value.replace(/[^0-9]/g, ''));
   const catatan = document.getElementById('kasbonCatatan').value.trim();
   if (!jumlah || jumlah <= 0) return showStatus(kasbonStatusEl, 'Jumlah pinjaman harus lebih dari 0', 'err');
+  if (jenis === 'cicil' && (!cicilanPerBulan || cicilanPerBulan <= 0)) {
+    return showStatus(kasbonStatusEl, 'Cicilan per bulan harus diisi untuk kasbon cicil', 'err');
+  }
   showStatus(kasbonStatusEl, 'Mengirim pengajuan...', 'warn');
   try {
     const res = await fetch('/api/kasbon', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: currentPhone, jenis, jumlah, catatan }),
+      body: JSON.stringify({ phone: currentPhone, jenis, jumlah, cicilanPerBulan: jenis === 'cicil' ? cicilanPerBulan : null, catatan }),
     });
     const data = await res.json();
     if (!res.ok) return showStatus(kasbonStatusEl, data.error || 'Gagal mengajukan', 'err');
     showStatus(kasbonStatusEl, 'Pengajuan kasbon berhasil dikirim, menunggu persetujuan admin.', 'ok');
     document.getElementById('kasbonJumlah').value = '';
+    document.getElementById('kasbonCicilanPerBulan').value = '';
     document.getElementById('kasbonCatatan').value = '';
+    document.getElementById('kasbonEstimasi').style.display = 'none';
     loadMyKasbon();
   } catch (e) {
     showStatus(kasbonStatusEl, 'Gagal mengirim: ' + e.message, 'err');
@@ -903,7 +939,7 @@ async function loadMyKasbon() {
           <span class="lc-title">${formatRupiah(k.jumlah)} <span class="muted">(${k.jenis})</span></span>
           <span class="lc-badge ${k.status}">${kasbonStatusLabel[k.status] || k.status}</span>
         </div>
-        <div class="lc-meta">Sisa: ${formatRupiah(k.sisa)}${k.catatan ? ' • ' + k.catatan : ''}</div>
+        <div class="lc-meta">Sisa: ${formatRupiah(k.sisa)}${k.jenis === 'cicil' && k.cicilanPerBulan ? ` • Cicilan ${formatRupiah(k.cicilanPerBulan)}/bulan` : ''}${k.catatan ? ' • ' + k.catatan : ''}</div>
       `;
       listEl.appendChild(card);
     });

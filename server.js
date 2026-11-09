@@ -1163,16 +1163,21 @@ const server = http.createServer(async (req, res) => {
     // Karyawan mengajukan kasbon baru.
     if (pathName === '/api/kasbon' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8'));
-      const { phone, jenis, jumlah, catatan } = body;
+      const { phone, jenis, jumlah, cicilanPerBulan, catatan } = body;
       const emp = config.employees.find((e) => e.phone === String(phone || '').trim());
       if (!emp) return sendJSON(res, 400, { error: 'Nomor telepon tidak terdaftar.' });
       if (!['cicil', 'potlang'].includes(jenis)) return sendJSON(res, 400, { error: 'Jenis kasbon harus "cicil" atau "potlang".' });
       const jml = Number(jumlah);
       if (!jml || jml <= 0) return sendJSON(res, 400, { error: 'Jumlah pinjaman harus lebih dari 0.' });
+      let cicilan = null;
+      if (jenis === 'cicil') {
+        cicilan = Number(cicilanPerBulan);
+        if (!cicilan || cicilan <= 0) return sendJSON(res, 400, { error: 'Cicilan per bulan harus diisi untuk kasbon cicil.' });
+      }
       const kasbonList = readJSON(KASBON_FILE);
       const entry = {
         id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-        phone: emp.phone, employee: emp.name, jenis, jumlah: jml, catatan: catatan || '',
+        phone: emp.phone, employee: emp.name, jenis, jumlah: jml, cicilanPerBulan: cicilan, catatan: catatan || '',
         status: 'pending', // pending -> disetujui admin -> lunas
         tanggal: dateKeyJakarta(new Date().toISOString()),
         createdAt: new Date().toISOString(),

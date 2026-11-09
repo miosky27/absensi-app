@@ -703,12 +703,12 @@ async function loadKasbon() {
     const tr = document.createElement('tr');
     const canBayar = k.status !== 'lunas' && k.sisa > 0;
     tr.innerHTML = `
-      <td>${k.employee}</td><td>${k.jenis}</td><td>${formatRupiah(k.jumlah)}</td>
+      <td>${k.employee}</td><td>${k.jenis}${k.jenis === 'cicil' && k.cicilanPerBulan ? `<div class="hint">${formatRupiah(k.cicilanPerBulan)}/bulan</div>` : ''}</td><td>${formatRupiah(k.jumlah)}</td>
       <td>${formatRupiah(k.dibayar)}</td><td>${formatRupiah(k.sisa)}</td>
       <td><span class="badge ${k.status}">${k.status}</span></td>
       <td>
         ${k.status === 'pending' ? `<button class="btn secondary small" type="button" data-kapprove="${k.id}">Setujui</button>` : ''}
-        ${canBayar ? `<button class="btn small" type="button" data-kbayar="${k.id}" data-jenis="${k.jenis}" data-sisa="${k.sisa}">Bayar</button>` : ''}
+        ${canBayar ? `<button class="btn small" type="button" data-kbayar="${k.id}" data-jenis="${k.jenis}" data-sisa="${k.sisa}" data-cicilan="${k.cicilanPerBulan || ''}">Bayar</button>` : ''}
       </td>
     `;
     tbody.appendChild(tr);
@@ -718,9 +718,12 @@ async function loadKasbon() {
   });
   tbody.querySelectorAll('[data-kbayar]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      let jumlah = Number(btn.dataset.sisa);
+      const sisa = Number(btn.dataset.sisa);
+      let jumlah = sisa;
       if (btn.dataset.jenis === 'cicil') {
-        const input = prompt('Jumlah pembayaran (Rp), maksimal ' + formatRupiah(jumlah) + ':', jumlah);
+        const cicilan = Number(btn.dataset.cicilan) || sisa;
+        const defaultVal = Math.min(cicilan, sisa);
+        const input = prompt('Jumlah pembayaran (Rp), maksimal ' + formatRupiah(sisa) + ':', defaultVal);
         if (input === null) return;
         jumlah = Number(input) || 0;
         if (jumlah <= 0) return;
