@@ -11,11 +11,8 @@
     margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     background: #faf5ec; color: #2a1a26; min-height: 100vh;
   }
-  .wrap { max-width: 480px; margin: 0 auto; padding: 24px 16px 48px; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 90px; }
   h1 { font-size: 18px; margin: 0 0 2px; color:#4a1843; }
-  .brand-head { display:flex; align-items:center; gap:12px; margin-bottom: 20px; }
-  .brand-head .sub { margin-bottom: 0; }
-  .brand-logo { height: 52px; width: auto; flex-shrink: 0; }
   .sub { color: #666; font-size: 14px; margin-bottom: 20px; }
 
   /* ---- Layar Masuk (login) ---- */
@@ -39,8 +36,6 @@
   .btn-primary { background: #702464; color: #fff; }
   .btn-secondary { background: #e8eaed; color: #1a1a1a; }
   .btn:disabled { opacity: 0.5; }
-  .row-2 { display: flex; gap: 10px; }
-  .row-2 .btn { flex: 1; }
   .preview { width: 100%; border-radius: 10px; margin-bottom: 14px; display: none; }
   .status { padding: 12px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 14px; display: none; }
   .status.ok { background: #e6f4ea; color: #137333; display: block; }
@@ -48,23 +43,14 @@
   .status.err { background: #fce8e6; color: #c5221f; display: block; }
   .muted { color: #888; font-size: 12px; }
   .name-tag { font-weight: 700; color: #702464; }
-  a.admin-link { display: block; text-align: center; margin-top: 10px; font-size: 13px; color: #888; }
   .shift-option {
     width: 100%; text-align: left; padding: 14px; border: 1.5px solid #ddd; border-radius: 10px;
     background: #fff; margin-bottom: 10px; cursor: pointer; font-size: 15px;
   }
   .shift-option:active { background: #f1e3ee; border-color: #702464; }
   .shift-option .shift-time { display:block; font-size: 13px; color: #666; margin-top: 2px; }
-  .hist-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eee; font-size:14px; }
-  .hist-row:last-child { border-bottom: none; }
-  .hist-left { display:flex; flex-direction:column; }
-  .hist-date { font-weight:600; font-size:13px; color:#333; }
-  .hist-type { font-size:12px; color:#666; }
-  .hist-badge { padding:3px 9px; border-radius:10px; font-size:11px; font-weight:700; }
-  .hist-badge.ok { background:#e6f4ea; color:#137333; }
-  .hist-badge.bad { background:#fce8e6; color:#c5221f; }
 
-  /* ---- Status badge waktu absen (tepat waktu/terlambat/pulang cepat/lembur) ---- */
+  /* ---- Status badge waktu absen ---- */
   .stat-badge { padding:2px 8px; border-radius:8px; font-size:10px; font-weight:700; white-space:nowrap; }
   .stat-badge.ontime { background:#e3eefc; color:#1a56b0; }
   .stat-badge.late { background:#f1e3ee; color:#702464; }
@@ -72,35 +58,109 @@
   .stat-badge.overtime { background:#e6f4ea; color:#137333; }
   .stat-badge.absent { background:#fce4ec; color:#c2185b; }
 
-  /* ---- Profil & dashboard riwayat ---- */
-  .profile-head { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
-  .profile-avatar { width:54px; height:54px; border-radius:50%; object-fit:cover; background:#e8eaed; border:1px solid #eee; flex-shrink:0; }
-  .profile-info .pname { font-weight:700; font-size:16px; }
-  .profile-info .pmeta { font-size:12px; color:#666; margin-top:2px; }
-  .stat-row { display:flex; gap:10px; margin-bottom:16px; }
-  .stat-box { flex:1; background:#f3ead8; border-radius:12px; padding:12px 8px; text-align:center; }
-  .stat-box .snum { font-size:18px; font-weight:800; color:#1a1a1a; }
-  .stat-box .slbl { font-size:11px; color:#666; margin-top:2px; }
-  .today-card { background:linear-gradient(135deg,#8a3380,#5c1d52); border-radius:14px; padding:14px; margin-bottom:16px; }
-  .today-card .tc-label { color:#f1dcec; font-size:12px; margin-bottom:10px; }
-  .lembur-card { background:linear-gradient(135deg,#b8862f,#7a5410); }
-  .today-row { display:flex; gap:10px; }
-  .today-box {
-    flex:1; border-radius:10px; padding:12px; border:none; text-align:left; cursor:pointer;
-    font-family:inherit; -webkit-tap-highlight-color: transparent;
+  /* ---- Bottom navigation ---- */
+  .bottom-nav {
+    position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid #eee;
+    display:flex; max-width:480px; margin:0 auto; box-shadow:0 -2px 10px rgba(0,0,0,0.05); z-index:50;
   }
-  .today-box.in { background:rgba(255,255,255,0.18); }
-  .today-box.out { background:rgba(255,255,255,0.18); }
-  .today-box:active { background:rgba(255,255,255,0.3); }
-  .today-box:disabled { cursor:default; opacity:0.85; }
-  .today-box .tb-lbl { color:#f3e4ef; font-size:11px; font-weight:600; }
-  .today-box .tb-time { color:#fff; font-size:16px; font-weight:800; margin-top:2px; }
+  .nav-item {
+    flex:1; text-align:center; padding:9px 0 10px; font-size:10.5px; color:#999; cursor:pointer;
+    border:none; background:none; font-family:inherit; -webkit-tap-highlight-color:transparent; position:relative;
+  }
+  .nav-item.active { color:#702464; font-weight:700; }
+  .nav-icon { font-size:20px; display:block; margin-bottom:2px; line-height:1; }
+  .nav-dot {
+    position:absolute; top:4px; right:calc(50% - 18px); width:8px; height:8px; border-radius:50%;
+    background:#c5221f; display:none;
+  }
+  .nav-dot.show { display:block; }
+
+  .page { display:none; }
+  .page.active { display:block; }
+
+  /* ---- Kartu Profil (gradient violet) ---- */
+  .profile-grad-card {
+    background:linear-gradient(135deg,#8a3380,#5c1d52); border-radius:18px; padding:40px 16px 18px;
+    position:relative; margin-bottom:16px; text-align:center;
+  }
+  .profile-avatar-float {
+    position:absolute; top:-28px; left:50%; transform:translateX(-50%);
+    width:60px; height:60px; border-radius:50%; object-fit:cover; background:#e8eaed;
+    border:3px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,0.15);
+  }
+  .profile-grad-card .pg-name { color:#fff; font-weight:800; font-size:16px; }
+  .profile-grad-card .pg-meta { color:#e9d3e4; font-size:12px; margin-top:3px; }
+
+  /* ---- Kartu Presensi ---- */
+  .presensi-card { text-align:center; }
+  .presensi-date { font-size:13px; color:#666; margin-bottom:4px; }
+  .presensi-status { font-size:15px; font-weight:700; color:#4a1843; margin-bottom:6px; }
+  .presensi-distance { font-size:12px; margin-bottom:18px; }
+  .presensi-distance.ok { color:#137333; }
+  .presensi-distance.bad { color:#c5221f; }
+  .presensi-distance.neutral { color:#999; }
+
+  .ring-btn {
+    width:148px; height:148px; border-radius:50%; margin:0 auto 10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,#9a3f8f,#5c1d52); color:#fff; font-weight:800; font-size:17px;
+    display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.3;
+    box-shadow:0 6px 18px rgba(90,20,80,0.35); font-family:inherit; padding:10px;
+  }
+  .ring-btn:active { transform:scale(0.97); }
+  .ring-btn:disabled { opacity:0.55; cursor:default; transform:none; }
+  .ring-btn.done { background:linear-gradient(135deg,#2e9e5b,#146b38); }
+  .ring-sub-time { font-size:12px; color:#888; margin-bottom:10px; }
+  .ring-extra-btn {
+    display:inline-block; margin-top:4px; padding:9px 18px; border-radius:20px; border:1.5px solid #e9ddf0;
+    background:#fff; color:#702464; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;
+  }
+  .ring-skip-link { display:block; margin-top:8px; font-size:12px; color:#999; text-decoration:underline; cursor:pointer; background:none; border:none; font-family:inherit; }
+
+  /* ---- Ringkasan bulan ini: grid 2x2 ---- */
+  .section-label { font-size:13px; font-weight:700; color:#4a1843; margin:4px 0 10px; }
+  .stat-grid-2x2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
+  .stat-tile { border-radius:14px; padding:14px; }
+  .stat-tile .st-num { font-size:22px; font-weight:800; }
+  .stat-tile .st-lbl { font-size:12px; margin-top:2px; }
+  .stat-tile.kehadiran { background:#e3eefc; } .stat-tile.kehadiran .st-num { color:#1a56b0; } .stat-tile.kehadiran .st-lbl { color:#1a56b0; }
+  .stat-tile.tidakhadir { background:#fce8e6; } .stat-tile.tidakhadir .st-num { color:#c5221f; } .stat-tile.tidakhadir .st-lbl { color:#c5221f; }
+  .stat-tile.ijin { background:#fef7e0; } .stat-tile.ijin .st-num { color:#b06000; } .stat-tile.ijin .st-lbl { color:#b06000; }
+  .stat-tile.lembur { background:#e6f4ea; } .stat-tile.lembur .st-num { color:#137333; } .stat-tile.lembur .st-lbl { color:#137333; }
+
+  /* ---- Akses Cepat ---- */
+  .akses-cepat-row { display:flex; gap:10px; margin-bottom:6px; }
+  .akses-card {
+    flex:1; border:1.5px solid #e9ddf0; border-radius:14px; padding:16px 10px; text-align:center;
+    background:#fff; cursor:pointer; font-family:inherit;
+  }
+  .akses-card:active { background:#f8f1f6; }
+  .akses-card .ac-icon { font-size:24px; margin-bottom:6px; }
+  .akses-card .ac-label { font-size:13px; font-weight:700; color:#4a1843; }
+
   .day-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
   .day-card .dc-date { font-weight:700; font-size:13px; margin-bottom:8px; }
   .day-card .dc-row { display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:4px 0; }
   .day-card .dc-row .dc-lbl { color:#666; }
   .day-card .dc-row .dc-time { font-weight:700; }
   .day-card .dc-meta { font-size:11px; color:#888; margin-top:6px; }
+
+  /* ---- Notifikasi ---- */
+  .notif-card { border:1px solid #eee; border-radius:12px; padding:14px; margin-bottom:10px; display:flex; gap:10px; align-items:flex-start; }
+  .notif-card.unread { background:#f8f1f6; border-color:#e9ddf0; }
+  .notif-dot-icon { width:8px; height:8px; border-radius:50%; background:#702464; margin-top:6px; flex-shrink:0; }
+  .notif-dot-icon.read { background:transparent; }
+  .notif-msg { font-size:13.5px; color:#2a1a26; line-height:1.4; }
+  .notif-time { font-size:11px; color:#999; margin-top:4px; }
+
+  /* ---- Profil page ---- */
+  .profil-list-item {
+    width:100%; display:flex; align-items:center; justify-content:space-between; padding:16px 4px;
+    border-bottom:1px solid #eee; background:none; border-left:none; border-right:none; border-top:none;
+    font-size:15px; color:#2a1a26; cursor:pointer; font-family:inherit; text-align:left;
+  }
+  .profil-list-item:last-child { border-bottom:none; }
+  .profil-list-item.danger { color:#c5221f; }
+  .profil-list-item .pli-arrow { color:#ccc; }
 
   /* ---- Slip Gaji ---- */
   .slip-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
@@ -150,8 +210,6 @@
   }
 
   /* ---- Ijin/Cuti & Kasbon ---- */
-  .menu-row-2 { display:flex; gap:10px; margin-bottom: 10px; }
-  .menu-row-2 .btn { flex:1; margin-bottom:0; }
   select.form-select { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; background:#fff; }
   textarea.form-textarea { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; font-family:inherit; resize:vertical; min-height:70px; }
   .list-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
@@ -164,6 +222,7 @@
   .lc-badge.rejected { background:#fce8e6; color:#c5221f; }
   .lc-badge.lunas { background:#e6f4ea; color:#137333; }
   .lc-badge.disetujui { background:#e3eefc; color:#1a56b0; }
+  .lc-badge.ditolak { background:#fce8e6; color:#c5221f; }
   .estimasi-lunas { background:#f3ead8; border-radius:10px; padding:10px 14px; font-size:13px; color:#4a1843; margin:-4px 0 14px; }
   .estimasi-lunas b { font-size:14px; }
 </style>
@@ -184,59 +243,75 @@
 
 <div class="wrap" id="mainWrap" style="display:none">
 
-  <div class="card" id="actionCard" style="display:none">
-    <div class="profile-head">
-      <img class="profile-avatar" id="historyAvatar" src="" onerror="this.style.visibility='hidden'" />
-      <div class="profile-info">
-        <div class="pname" id="empName"></div>
-        <div class="pmeta" id="historyEmpMeta"></div>
-      </div>
+  <!-- ================= DASHBOARD ================= -->
+  <div class="page active" id="page-dashboard">
+    <div class="profile-grad-card">
+      <img class="profile-avatar-float" id="historyAvatar" src="" onerror="this.style.visibility='hidden'" />
+      <div class="pg-name" id="empName"></div>
+      <div class="pg-meta" id="historyEmpMeta"></div>
+    </div>
+
+    <div class="card presensi-card" id="presensiCard">
+      <div class="presensi-date" id="todayDateLabel"></div>
+      <div class="presensi-status" id="presensiStatusLabel">Memuat...</div>
+      <div class="presensi-distance neutral" id="presensiDistanceLabel">Lokasi akan dicek saat absen</div>
+
+      <button type="button" class="ring-btn" id="ringBtn">MASUK</button>
+      <div class="ring-sub-time" id="ringSubTime"></div>
+      <div id="ringExtra"></div>
+
+      <div class="status" id="actionStatus" style="text-align:left"></div>
     </div>
 
     <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" />
     <img id="preview" class="preview" />
 
-    <div class="status" id="actionStatus"></div>
-
-    <div class="stat-row" id="statRow" style="display:none">
-      <div class="stat-box"><div class="snum" id="statHadir">0</div><div class="slbl">Hari Hadir</div></div>
-      <div class="stat-box"><div class="snum" id="statTerlambat">0</div><div class="slbl">Terlambat</div></div>
-      <div class="stat-box"><div class="snum" id="statLembur">0</div><div class="slbl">Lembur (jam)</div></div>
+    <div class="section-label">Ringkasan Bulan Ini</div>
+    <div class="stat-grid-2x2">
+      <div class="stat-tile kehadiran"><div class="st-num" id="statHadir">0</div><div class="st-lbl">Kehadiran</div></div>
+      <div class="stat-tile tidakhadir"><div class="st-num" id="statTidakHadir">0</div><div class="st-lbl">Tidak Hadir</div></div>
+      <div class="stat-tile ijin"><div class="st-num" id="statIjin">0</div><div class="st-lbl">Ijin</div></div>
+      <div class="stat-tile lembur"><div class="st-num" id="statLembur">0</div><div class="st-lbl">Lembur (jam)</div></div>
     </div>
 
-    <div class="today-card" id="todayCard">
-      <div class="tc-label" id="todayDateLabel"></div>
-      <div class="today-row">
-        <button type="button" class="today-box in" id="btnMasuk"><div class="tb-lbl">Check In</div><div class="tb-time" id="todayMasuk">Absen Masuk</div></button>
-        <button type="button" class="today-box out" id="btnKeluar"><div class="tb-lbl">Check Out</div><div class="tb-time" id="todayKeluar">Absen Keluar</div></button>
-      </div>
+    <div class="section-label">Akses Cepat</div>
+    <div class="akses-cepat-row">
+      <button type="button" class="akses-card" id="lihatSlipGaji"><div class="ac-icon">&#128179;</div><div class="ac-label">Slip Gaji</div></button>
+      <button type="button" class="akses-card" id="bukaKasbon"><div class="ac-icon">&#128181;</div><div class="ac-label">Kasbon</div></button>
     </div>
+  </div>
 
-    <div class="today-card lembur-card" id="lemburCard">
-      <div class="tc-label">Lembur <span class="muted" style="color:#e8d9a8">(di luar jadwal shift, kapan saja)</span></div>
-      <div class="today-row">
-        <button type="button" class="today-box in" id="btnLemburMasuk"><div class="tb-lbl">Lembur Masuk</div><div class="tb-time" id="todayLemburMasuk">Mulai Lembur</div></button>
-        <button type="button" class="today-box out" id="btnLemburKeluar"><div class="tb-lbl">Lembur Pulang</div><div class="tb-time" id="todayLemburKeluar">Selesai Lembur</div></button>
-      </div>
-    </div>
-
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px">
-      <span class="muted">Riwayat Harian</span>
+  <!-- ================= RIWAYAT ABSENSI ================= -->
+  <div class="page" id="page-riwayat">
+    <div class="slip-head">
+      <div class="sh-title">Riwayat Absensi</div>
       <input type="month" id="historyMonthInput" style="padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:13px" />
     </div>
     <div id="historyList"></div>
     <div class="hint" id="historyEmpty"></div>
+  </div>
 
-    <div class="menu-row-2" style="margin-top:4px">
-      <button class="btn btn-secondary" id="lihatSlipGaji">Slip Gaji</button>
-      <button class="btn btn-secondary" id="bukaIjinCuti">Ijin/Cuti</button>
+  <!-- ================= NOTIFIKASI ================= -->
+  <div class="page" id="page-notifikasi">
+    <div class="sh-title" style="margin-bottom:14px">Notifikasi</div>
+    <div id="notifList"></div>
+    <div class="hint" id="notifEmpty"></div>
+  </div>
+
+  <!-- ================= PROFIL ================= -->
+  <div class="page" id="page-profil">
+    <div class="profile-grad-card" style="margin-bottom:24px">
+      <img class="profile-avatar-float" id="profilAvatar" src="" onerror="this.style.visibility='hidden'" />
+      <div class="pg-name" id="profilName"></div>
+      <div class="pg-meta" id="profilMeta"></div>
     </div>
-    <div class="menu-row-2">
-      <button class="btn btn-secondary" id="bukaKasbon">Kasbon</button>
-      <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
+    <div class="card" style="padding:4px 16px">
+      <button type="button" class="profil-list-item" id="bukaIjinCuti"><span>Ijin / Cuti</span><span class="pli-arrow">&#8250;</span></button>
+      <button type="button" class="profil-list-item danger" id="gantiNomor"><span>Keluar</span><span class="pli-arrow">&#8250;</span></button>
     </div>
   </div>
 
+  <!-- ================= SUB-HALAMAN (dibuka dari Akses Cepat / Profil) ================= -->
   <div class="card" id="payslipCard" style="display:none">
     <div class="slip-head">
       <div class="sh-title">Slip Gaji</div>
@@ -307,16 +382,20 @@
     <button class="btn btn-secondary" id="batalShift">Batal</button>
   </div>
 
-  <div class="muted" style="text-align:center">
-    Pastikan izin <b>Lokasi</b> dan <b>Kamera</b> diaktifkan di browser Anda.
-  </div>
-  <a class="admin-link" href="/admin.html">Admin</a>
+</div>
+
+<!-- ================= BOTTOM NAV ================= -->
+<div class="bottom-nav" id="bottomNav" style="display:none">
+  <button type="button" class="nav-item active" data-navpage="dashboard"><span class="nav-icon">&#127968;</span>Dashboard</button>
+  <button type="button" class="nav-item" data-navpage="riwayat"><span class="nav-icon">&#128197;</span>Riwayat</button>
+  <button type="button" class="nav-item" data-navpage="notifikasi"><span class="nav-icon">&#128276;</span><span class="nav-dot" id="notifDot"></span>Notifikasi</button>
+  <button type="button" class="nav-item" data-navpage="profil"><span class="nav-icon">&#128100;</span>Profil</button>
 </div>
 
 <script>
 const loginScreen = document.getElementById('loginScreen');
 const mainWrap = document.getElementById('mainWrap');
-const actionCard = document.getElementById('actionCard');
+const bottomNav = document.getElementById('bottomNav');
 const shiftCard = document.getElementById('shiftCard');
 const phoneInput = document.getElementById('phoneInput');
 const phoneStatus = document.getElementById('phoneStatus');
@@ -332,13 +411,44 @@ let currentType = null;
 let currentShift = null;
 let currentLat = null;
 let currentLng = null;
+let currentProfile = null;
+let lastOpenedSubScreen = null; // untuk tombol "Tutup" pada Slip Gaji/Ijin/Kasbon kembali ke page asal
 
 function showStatus(el, msg, cls) {
   el.textContent = msg;
   el.className = 'status ' + cls;
 }
 
-let currentProfile = null;
+// ---- Navigasi bottom nav & perpindahan antar page ----
+const pages = ['dashboard', 'riwayat', 'notifikasi', 'profil'];
+function showPage(name) {
+  pages.forEach((p) => {
+    document.getElementById('page-' + p).classList.toggle('active', p === name);
+  });
+  document.querySelectorAll('.nav-item').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.navpage === name);
+  });
+  // Sembunyikan sub-halaman kalau sedang terbuka
+  ['payslipCard', 'leaveCard', 'kasbonCard'].forEach((id) => { document.getElementById(id).style.display = 'none'; });
+  if (name === 'riwayat') loadHistory();
+  if (name === 'notifikasi') loadNotifications();
+  if (name === 'profil') fillProfilPage();
+}
+document.querySelectorAll('.nav-item').forEach((btn) => {
+  btn.addEventListener('click', () => showPage(btn.dataset.navpage));
+});
+
+function openSubScreen(cardId, fromPage) {
+  lastOpenedSubScreen = fromPage;
+  pages.forEach((p) => document.getElementById('page-' + p).classList.remove('active'));
+  bottomNav.style.display = 'none';
+  document.getElementById(cardId).style.display = 'block';
+}
+function closeSubScreen(cardId) {
+  document.getElementById(cardId).style.display = 'none';
+  bottomNav.style.display = 'flex';
+  showPage(lastOpenedSubScreen || 'dashboard');
+}
 
 document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
   const phone = phoneInput.value.trim();
@@ -353,19 +463,16 @@ document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
     if (!res.ok) return showStatus(phoneStatus, data.error || 'Nomor tidak ditemukan', 'err');
     currentPhone = phone;
     currentProfile = data;
-    empName.textContent = data.name;
-    document.getElementById('historyEmpMeta').textContent = [data.position, data.idNumber ? 'ID: ' + data.idNumber : ''].filter(Boolean).join(' • ');
-    const avatarEl = document.getElementById('historyAvatar');
-    if (data.photoUrl) { avatarEl.src = data.photoUrl; avatarEl.style.visibility = 'visible'; }
-    else { avatarEl.style.visibility = 'hidden'; }
 
     loginScreen.style.display = 'none';
     mainWrap.style.display = 'block';
-    actionCard.style.display = 'block';
+    bottomNav.style.display = 'flex';
     phoneStatus.style.display = 'none';
+    showPage('dashboard');
 
     historyMonthInput.value = new Date().toISOString().slice(0, 7);
-    loadHistory();
+    loadHistory(true);
+    checkNotifDot();
   } catch (e) {
     showStatus(phoneStatus, 'Gagal menghubungi server: ' + e.message, 'err');
   }
@@ -376,13 +483,13 @@ document.getElementById('phoneInput').addEventListener('keydown', (e) => {
 
 document.getElementById('gantiNomor').addEventListener('click', () => {
   mainWrap.style.display = 'none';
+  bottomNav.style.display = 'none';
   loginScreen.style.display = 'flex';
   preview.style.display = 'none';
   actionStatus.style.display = 'none';
 });
 
 // ---- Slip Gaji ----
-const payslipCard = document.getElementById('payslipCard');
 const slipBody = document.getElementById('slipBody');
 const slipPeriodLabel = document.getElementById('slipPeriodLabel');
 let slipFrom = null;
@@ -401,9 +508,8 @@ function fmtPeriodLabel(from, to) {
   return `${a} – ${b}`;
 }
 
-// Geser periode gajian (format 26 - 25) mundur/maju satu bulan.
 function shiftPayrollPeriod(to, deltaMonths) {
-  const [y, m] = to.split('-').map(Number); // 'to' selalu tanggal 25
+  const [y, m] = to.split('-').map(Number);
   const base = new Date(y, m - 1 + deltaMonths, 25);
   const pad = (n) => String(n).padStart(2, '0');
   const newTo = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-25`;
@@ -474,14 +580,10 @@ async function loadPayslip() {
 
 document.getElementById('lihatSlipGaji').addEventListener('click', () => {
   slipFrom = null; slipTo = null;
-  actionCard.style.display = 'none';
-  payslipCard.style.display = 'block';
+  openSubScreen('payslipCard', 'dashboard');
   loadPayslip();
 });
-document.getElementById('tutupSlip').addEventListener('click', () => {
-  payslipCard.style.display = 'none';
-  actionCard.style.display = 'block';
-});
+document.getElementById('tutupSlip').addEventListener('click', () => closeSubScreen('payslipCard'));
 document.getElementById('slipPrev').addEventListener('click', () => {
   if (!slipTo) return;
   const p = shiftPayrollPeriod(slipTo, -1);
@@ -495,7 +597,7 @@ document.getElementById('slipNext').addEventListener('click', () => {
   loadPayslip();
 });
 
-// ---- Riwayat & ringkasan absensi (bagian dari halaman utama) ----
+// ---- Riwayat & ringkasan absensi ----
 const historyMonthInput = document.getElementById('historyMonthInput');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
@@ -507,7 +609,6 @@ function fmtTerlambat(jam, menit) {
   return (jam > 0 ? jam + 'j ' : '') + menit + 'm';
 }
 
-// ---- Status badge waktu absen (mengacu pada jam shift resmi, warna seperti Pintar HR) ----
 function timeToMinutes(hhmm) {
   if (!hhmm) return null;
   const [h, m] = hhmm.split(':').map(Number);
@@ -524,7 +625,6 @@ function attendanceStatusBadge(record) {
     if (t > start + currentToleransiMenit) return '<span class="stat-badge late">Terlambat</span>';
     return '<span class="stat-badge ontime">Tepat Waktu</span>';
   }
-  // keluar
   const end = timeToMinutes(record.shiftEnd);
   if (end === null) return '';
   if (t > end) return '<span class="stat-badge overtime">Lembur</span>';
@@ -532,74 +632,107 @@ function attendanceStatusBadge(record) {
   return '<span class="stat-badge ontime">Tepat Waktu</span>';
 }
 
-function renderTodayButtons(today) {
-  const btnM = document.getElementById('btnMasuk');
-  const btnK = document.getElementById('btnKeluar');
-  const lblM = document.getElementById('todayMasuk');
-  const lblK = document.getElementById('todayKeluar');
-  document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-  if (today.masuk) {
-    lblM.textContent = today.masuk + ' WIB';
-    btnM.disabled = true;
-  } else {
-    lblM.textContent = 'Absen Masuk';
-    btnM.disabled = false;
-  }
-  if (today.keluar) {
-    lblK.textContent = today.keluar + ' WIB';
-    btnK.disabled = true;
-  } else {
-    lblK.textContent = 'Absen Keluar';
-    btnK.disabled = false;
-  }
+// ---- Tombol presensi berbentuk cincin, satu tombol untuk seluruh alur ----
+// Urutan: MASUK -> PULANG -> (opsional) LEMBUR MASUK -> LEMBUR PULANG -> SELESAI
+const ringBtn = document.getElementById('ringBtn');
+const ringSubTime = document.getElementById('ringSubTime');
+const ringExtra = document.getElementById('ringExtra');
+const presensiStatusLabel = document.getElementById('presensiStatusLabel');
 
-  const btnLM = document.getElementById('btnLemburMasuk');
-  const btnLK = document.getElementById('btnLemburKeluar');
-  const lblLM = document.getElementById('todayLemburMasuk');
-  const lblLK = document.getElementById('todayLemburKeluar');
-  if (today.lemburMasuk) {
-    lblLM.textContent = today.lemburMasuk + ' WIB';
-    btnLM.disabled = true;
-  } else {
-    lblLM.textContent = 'Mulai Lembur';
-    btnLM.disabled = false;
+function renderRingButton(today) {
+  document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  ringBtn.disabled = false;
+  ringBtn.classList.remove('done');
+  ringExtra.innerHTML = '';
+  ringBtn.onclick = null;
+
+  if (!today.masuk) {
+    presensiStatusLabel.textContent = 'Belum Absen';
+    ringBtn.textContent = 'MASUK';
+    ringSubTime.textContent = '';
+    ringBtn.onclick = () => startAbsen('masuk');
+    return;
   }
-  if (today.lemburKeluar) {
-    lblLK.textContent = today.lemburKeluar + ' WIB';
-    btnLK.disabled = true;
-  } else {
-    lblLK.textContent = 'Selesai Lembur';
-    btnLK.disabled = false;
+  if (!today.keluar) {
+    presensiStatusLabel.textContent = 'Presensi Pulang';
+    ringBtn.textContent = 'PULANG';
+    ringSubTime.textContent = 'Masuk ' + today.masuk + ' WIB';
+    ringBtn.onclick = () => startAbsen('keluar');
+    return;
   }
+  // Masuk & Pulang selesai — Lembur bersifat opsional.
+  ringSubTime.textContent = `Masuk ${today.masuk} WIB • Pulang ${today.keluar} WIB`;
+  if (!today.lemburMasuk) {
+    presensiStatusLabel.textContent = 'Presensi Selesai';
+    ringBtn.textContent = '✓ SELESAI';
+    ringBtn.classList.add('done');
+    ringBtn.disabled = true;
+    ringExtra.innerHTML = '<button type="button" class="ring-extra-btn" id="btnMulaiLembur">+ Lembur Masuk</button>';
+    document.getElementById('btnMulaiLembur').addEventListener('click', () => startLembur('lembur_masuk'));
+    return;
+  }
+  if (!today.lemburKeluar) {
+    presensiStatusLabel.textContent = 'Sedang Lembur';
+    ringBtn.textContent = 'LEMBUR PULANG';
+    ringSubTime.textContent += ` • Lembur Masuk ${today.lemburMasuk} WIB`;
+    ringBtn.onclick = () => startLembur('lembur_keluar');
+    return;
+  }
+  presensiStatusLabel.textContent = 'Presensi Selesai';
+  ringBtn.textContent = '✓ SELESAI';
+  ringBtn.classList.add('done');
+  ringBtn.disabled = true;
+  ringSubTime.textContent += ` • Lembur ${today.lemburMasuk}–${today.lemburKeluar} WIB`;
 }
 
-async function loadHistory() {
+// ---- Jarak ke lokasi presensi terdekat (dicek diam-diam kalau izin lokasi sudah diberikan) ----
+async function silentDistanceCheck() {
+  const distEl = document.getElementById('presensiDistanceLabel');
+  try {
+    if (!navigator.permissions || !navigator.geolocation) return;
+    const perm = await navigator.permissions.query({ name: 'geolocation' });
+    if (perm.state !== 'granted') return;
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const res = await fetch('/api/nearest-location', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        });
+        const data = await res.json();
+        if (!res.ok) return;
+        const within = data.withinRadius;
+        distEl.className = 'presensi-distance ' + (within ? 'ok' : 'bad');
+        distEl.textContent = `${data.name}: ${Math.round(data.distanceMeters)} m ${within ? '(dalam radius)' : '(di luar radius)'}`;
+      } catch (e) { /* diam-diam gagal, biarkan label default */ }
+    }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 });
+  } catch (e) { /* Permissions API tidak didukung — biarkan label default */ }
+}
+
+async function loadHistory(alsoSilentDistance) {
   historyList.innerHTML = '';
   historyEmpty.textContent = 'Memuat...';
-  document.getElementById('statRow').style.display = 'none';
   try {
-    const month = historyMonthInput.value;
+    const month = historyMonthInput.value || new Date().toISOString().slice(0, 7);
+    historyMonthInput.value = month;
     const res = await fetch(`/api/my-records?phone=${encodeURIComponent(currentPhone)}&month=${month}`);
     const data = await res.json();
     if (!res.ok) { historyEmpty.textContent = data.error || 'Gagal memuat riwayat'; return; }
 
-    // Profil
     empName.textContent = data.name;
-    document.getElementById('historyEmpMeta').textContent = [data.position, data.idNumber ? 'ID: ' + data.idNumber : ''].filter(Boolean).join(' • ');
+    document.getElementById('historyEmpMeta').textContent = [data.position, data.idNumber ? 'No ID: ' + data.idNumber : ''].filter(Boolean).join(' • ');
     const avatarEl = document.getElementById('historyAvatar');
     if (data.photoUrl) { avatarEl.src = data.photoUrl; avatarEl.style.visibility = 'visible'; }
     else { avatarEl.style.visibility = 'hidden'; }
 
-    // Ringkasan bulan ini
-    const statRow = document.getElementById('statRow');
-    statRow.style.display = 'flex';
     document.getElementById('statHadir').textContent = data.summary.hariHadir;
-    document.getElementById('statTerlambat').textContent = fmtTerlambat(data.summary.terlambatJam, data.summary.terlambatMenit);
+    document.getElementById('statTidakHadir').textContent = data.summary.tidakHadir;
+    document.getElementById('statIjin').textContent = data.summary.ijin;
     document.getElementById('statLembur').textContent = data.totalLemburJam;
 
-    // Tombol Absen Masuk/Keluar sekaligus menampilkan jam absen hari ini (selalu, apa pun bulan yang sedang dilihat).
-    renderTodayButtons(data.today);
+    renderRingButton(data.today);
     currentToleransiMenit = data.toleransiMenit ?? 15;
+    if (alsoSilentDistance) silentDistanceCheck();
 
     if (!data.records || data.records.length === 0) {
       historyEmpty.textContent = 'Belum ada riwayat absen di bulan ini.';
@@ -607,7 +740,6 @@ async function loadHistory() {
     }
     historyEmpty.textContent = '';
 
-    // Kelompokkan per tanggal supaya Check In & Check Out tampil dalam satu kartu.
     const byDate = {};
     const order = [];
     data.records.forEach((r) => {
@@ -640,11 +772,70 @@ async function loadHistory() {
   }
 }
 
+// ---- Profil page ----
+function fillProfilPage() {
+  document.getElementById('profilName').textContent = empName.textContent;
+  document.getElementById('profilMeta').textContent = document.getElementById('historyEmpMeta').textContent;
+  const src = document.getElementById('historyAvatar');
+  const dst = document.getElementById('profilAvatar');
+  if (src.style.visibility !== 'hidden' && src.src) { dst.src = src.src; dst.style.visibility = 'visible'; }
+  else { dst.style.visibility = 'hidden'; }
+}
+
+// ---- Notifikasi ----
+const notifList = document.getElementById('notifList');
+const notifEmpty = document.getElementById('notifEmpty');
+const notifDot = document.getElementById('notifDot');
+
+function fmtNotifTime(iso) {
+  return new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function checkNotifDot() {
+  try {
+    const res = await fetch(`/api/my-notifications?phone=${encodeURIComponent(currentPhone)}`);
+    const data = await res.json();
+    const anyUnread = (data.notifications || []).some((n) => !n.read);
+    notifDot.classList.toggle('show', anyUnread);
+  } catch (e) { /* abaikan */ }
+}
+
+async function loadNotifications() {
+  notifList.innerHTML = '';
+  notifEmpty.textContent = 'Memuat...';
+  try {
+    const res = await fetch(`/api/my-notifications?phone=${encodeURIComponent(currentPhone)}`);
+    const data = await res.json();
+    const notifications = data.notifications || [];
+    notifEmpty.textContent = notifications.length === 0 ? 'Belum ada notifikasi.' : '';
+    notifications.forEach((n) => {
+      const card = document.createElement('div');
+      card.className = 'notif-card' + (n.read ? '' : ' unread');
+      card.innerHTML = `
+        <div class="notif-dot-icon ${n.read ? 'read' : ''}"></div>
+        <div>
+          <div class="notif-msg">${n.message}</div>
+          <div class="notif-time">${fmtNotifTime(n.createdAt)}</div>
+        </div>
+      `;
+      notifList.appendChild(card);
+    });
+    if (notifications.some((n) => !n.read)) {
+      await fetch('/api/notifications/mark-read', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: currentPhone }),
+      });
+      notifDot.classList.remove('show');
+    }
+  } catch (e) {
+    notifEmpty.textContent = 'Gagal memuat notifikasi: ' + e.message;
+  }
+}
+
 function getLocation() {
   if (!navigator.geolocation) {
     return Promise.reject(new Error('Perangkat tidak mendukung GPS.'));
   }
-  // Coba dulu dengan GPS akurasi tinggi (lebih presisi, tapi bisa lambat di dalam ruangan).
   const tryHighAccuracy = new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve(pos.coords),
@@ -654,8 +845,6 @@ function getLocation() {
   });
 
   return tryHighAccuracy.catch((err) => {
-    // Kalau gagal karena timeout atau sinyal GPS lemah, coba lagi dengan akurasi lebih
-    // rendah (WiFi/jaringan) yang biasanya lebih cepat didapat di dalam toko/ruangan.
     if (err && err.code === 3 /* TIMEOUT */) {
       return new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
@@ -674,13 +863,11 @@ async function startAbsen(type) {
   currentShift = null;
 
   if (type === 'keluar') {
-    // Absen keluar tidak perlu pilih shift, langsung ambil foto.
     photoInput.value = '';
     photoInput.click();
     return;
   }
 
-  // Absen masuk: ambil lokasi dulu untuk tahu shift apa saja yang tersedia di lokasi ini.
   showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
   try {
     const coords = await getLocation();
@@ -701,20 +888,13 @@ async function startAbsen(type) {
     showStatus(actionStatus, e.message, 'err');
   }
 }
-document.getElementById('btnMasuk').addEventListener('click', () => startAbsen('masuk'));
-document.getElementById('btnKeluar').addEventListener('click', () => startAbsen('keluar'));
 
-// Lembur Masuk/Lembur Pulang: di luar jadwal shift, tanpa pilih shift dan tanpa batasan waktu.
-// Lokasi GPS tetap diambil (sama seperti absen keluar) untuk kelengkapan data, hanya saja
-// hasilnya tidak dicocokkan ke radius/jadwal shift mana pun.
 function startLembur(type) {
   currentType = type;
   currentShift = null;
   photoInput.value = '';
   photoInput.click();
 }
-document.getElementById('btnLemburMasuk').addEventListener('click', () => startLembur('lembur_masuk'));
-document.getElementById('btnLemburKeluar').addEventListener('click', () => startLembur('lembur_keluar'));
 
 function showShiftPicker(locationName, shifts) {
   shiftLocationName.textContent = locationName;
@@ -727,19 +907,22 @@ function showShiftPicker(locationName, shifts) {
     btn.addEventListener('click', () => {
       currentShift = s.name;
       shiftCard.style.display = 'none';
-      actionCard.style.display = 'block';
+      bottomNav.style.display = 'flex';
+      showPage('dashboard');
       photoInput.value = '';
       photoInput.click();
     });
     shiftOptions.appendChild(btn);
   });
-  actionCard.style.display = 'none';
+  pages.forEach((p) => document.getElementById('page-' + p).classList.remove('active'));
+  bottomNav.style.display = 'none';
   shiftCard.style.display = 'block';
 }
 
 document.getElementById('batalShift').addEventListener('click', () => {
   shiftCard.style.display = 'none';
-  actionCard.style.display = 'block';
+  bottomNav.style.display = 'flex';
+  showPage('dashboard');
 });
 
 photoInput.addEventListener('change', async () => {
@@ -749,8 +932,6 @@ photoInput.addEventListener('change', async () => {
   preview.style.display = 'block';
 
   try {
-    // Untuk absen masuk, lokasi sudah diambil sebelumnya (saat pilih shift).
-    // Untuk absen keluar dan lembur masuk/pulang, ambil lokasi sekarang.
     if (currentType === 'keluar' || currentType === 'lembur_masuk' || currentType === 'lembur_keluar') {
       showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
       const coords = await getLocation();
@@ -789,20 +970,15 @@ photoInput.addEventListener('change', async () => {
 });
 
 // ---- Ijin/Cuti ----
-const leaveCard = document.getElementById('leaveCard');
 const leaveTypeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin Lainnya' };
 const leaveStatusLabel = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
 
 document.getElementById('bukaIjinCuti').addEventListener('click', () => {
-  actionCard.style.display = 'none';
-  leaveCard.style.display = 'block';
+  openSubScreen('leaveCard', 'profil');
   document.getElementById('leaveStatus').style.display = 'none';
   loadMyLeaves();
 });
-document.getElementById('tutupLeave').addEventListener('click', () => {
-  leaveCard.style.display = 'none';
-  actionCard.style.display = 'block';
-});
+document.getElementById('tutupLeave').addEventListener('click', () => closeSubScreen('leaveCard'));
 
 document.getElementById('submitLeaveBtn').addEventListener('click', async () => {
   const leaveStatusEl = document.getElementById('leaveStatus');
@@ -855,22 +1031,16 @@ async function loadMyLeaves() {
 }
 
 // ---- Kasbon ----
-const kasbonCard = document.getElementById('kasbonCard');
-const kasbonStatusLabel = { pending: 'Menunggu', disetujui: 'Disetujui', lunas: 'Lunas' };
+const kasbonStatusLabel = { pending: 'Menunggu', disetujui: 'Disetujui', ditolak: 'Ditolak', lunas: 'Lunas' };
 
 document.getElementById('bukaKasbon').addEventListener('click', () => {
-  actionCard.style.display = 'none';
-  kasbonCard.style.display = 'block';
+  openSubScreen('kasbonCard', 'dashboard');
   document.getElementById('kasbonStatus').style.display = 'none';
   updateKasbonCicilVisibility();
   loadMyKasbon();
 });
-document.getElementById('tutupKasbon').addEventListener('click', () => {
-  kasbonCard.style.display = 'none';
-  actionCard.style.display = 'block';
-});
+document.getElementById('tutupKasbon').addEventListener('click', () => closeSubScreen('kasbonCard'));
 
-// ---- Field "Cicilan per Bulan" hanya relevan untuk jenis Cicil ----
 function updateKasbonCicilVisibility() {
   const isCicil = document.getElementById('kasbonJenis').value === 'cicil';
   document.getElementById('kasbonCicilWrap').style.display = isCicil ? 'block' : 'none';
