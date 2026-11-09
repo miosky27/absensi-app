@@ -46,12 +46,19 @@ ensureFile(CONFIG_FILE, {
   ],
   // Daftar karyawan: login memakai nomor telepon
   employees: [
-    { phone: "081234567890", name: "Contoh Karyawan 1", idNumber: "", position: "", photoFilename: null },
-    { phone: "081234567891", name: "Contoh Karyawan 2", idNumber: "", position: "", photoFilename: null },
+    { phone: "081234567890", name: "Contoh Karyawan 1", idNumber: "", position: "", photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 },
+    { phone: "081234567891", name: "Contoh Karyawan 2", idNumber: "", position: "", photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 },
   ],
   adminPassword: process.env.ADMIN_PASSWORD || "admin123",
   workStartTime: "08:00", // fallback kalau record lama tidak punya data shift
   reportEmail: "f.yazid27@gmail.com",
+  // ---- Pengaturan perhitungan gaji ----
+  uangMakanPerHari: 7000, // per hari masuk
+  uangTransportPerHari: 5000, // per hari masuk
+  jatahOffPerPeriode: 5, // hari tidak hadir yang masih ditoleransi per periode gajian
+  pengaliPotonganOff: 2, // OFF melebihi jatah dipotong (gaji harian x pengali ini)
+  toleransiTerlambatMenit: 15, // menit toleransi sebelum dianggap terlambat
+  maksTerlambatUntukKerajinan: 2, // lebih dari ini dalam 1 periode, bonus kerajinan hangus
 });
 
 function readJSON(file) {
@@ -84,6 +91,20 @@ function migrateConfig(config) {
     if (emp.idNumber === undefined) { emp.idNumber = ''; changed = true; }
     if (emp.position === undefined) { emp.position = ''; changed = true; }
     if (emp.photoFilename === undefined) { emp.photoFilename = null; changed = true; }
+    if (emp.gajiPokok === undefined) { emp.gajiPokok = 0; changed = true; }
+    if (emp.upahLemburPerJam === undefined) { emp.upahLemburPerJam = 0; changed = true; }
+  }
+  // Pengaturan gaji lama (sebelum fitur perhitungan gaji) belum punya field-field ini.
+  const gajiDefaults = {
+    uangMakanPerHari: 7000,
+    uangTransportPerHari: 5000,
+    jatahOffPerPeriode: 5,
+    pengaliPotonganOff: 2,
+    toleransiTerlambatMenit: 15,
+    maksTerlambatUntukKerajinan: 2,
+  };
+  for (const key of Object.keys(gajiDefaults)) {
+    if (config[key] === undefined) { config[key] = gajiDefaults[key]; changed = true; }
   }
   if (changed || typeof config.officeLat === 'number') writeJSON(CONFIG_FILE, config);
   return config;
@@ -158,6 +179,127 @@ function computeLemburByEmployeeDate(records) {
     }
     result[key] = Math.max(0, keluar - masuk - JAM_KERJA_STANDAR_MENIT);
   }
+  return result;
+}
+
+// ---------- Perhitungan gaji (metode JADWAL: dibandingkan ke jam shift resmi) ----------
+// Untuk tiap (karyawan, tanggal): shift acuan diambil dari record MASUK (karyawan memilih shift
+// saat absen masuk). Dari situ dihitung:
+// - lemburAwalMenit: datang sebelum jam shift mulai
+// - terlambatMenit : datang sesudah jam shift mulai, dikurangi toleransi
+// - lemburAkhirMenit: pulang sesudah jam shift selesai
+// - pulangCepatMenit: pulang sebelum jam shift selesai (hanya jika ada record keluar hari itu)
+function computePayrollDailyByEmployeeDate(records, toleransiMenit) {
+  const grouped = {}; // key: employee|date -> { masuk, keluar, shiftStart, shiftEnd }
+  for (const r of records) {
+    const key = r.employee + '|' + r.dateKey;
+    if (!grouped[key]) grouped[key] = { masuk: null, keluar: null, shiftStart: null, shiftEnd: null };
+    const g = grouped[key];
+    if (r.type === 'masuk') {
+      g.masuk = timeToMinutes(r.timeHHMM);
+      if (r.shiftStart) g.shiftStart = timeToMinutes(r.shiftStart);
+      if (r.shiftEnd) g.shiftEnd = timeToMinutes(r.shiftEnd);
+    } else if (r.type === 'keluar') {
+      g.keluar = timeToMinutes(r.timeHHMM);
+    }
+  }
+  const result = {};
+  for (const key of Object.keys(grouped)) {
+    const g = grouped[key];
+    const out = { lemburAwalMenit: 0, terlambatMenit: 0, lemburAkhirMenit: 0, pulangCepatMenit: 0, hadir: g.masuk !== null };
+    if (g.masuk !== null && g.shiftStart !== null) {
+      if (g.masuk < g.shiftStart) out.lemburAwalMenit = g.shiftStart - g.masuk;
+      else if (g.masuk > g.shiftStart + toleransiMenit) out.terlambatMenit = g.masuk - g.shiftStart;
+    }
+    if (g.keluar !== null && g.shiftEnd !== null) {
+      if (g.keluar > g.shiftEnd) out.lemburAkhirMenit = g.keluar - g.shiftEnd;
+      else if (g.keluar < g.shiftEnd) out.pulangCepatMenit = g.shiftEnd - g.keluar;
+    }
+    result[key] = out;
+  }
+  return result;
+}
+
+function countDaysInclusive(from, to) {
+  const a = new Date(from + 'T00:00:00Z');
+  const b = new Date(to + 'T00:00:00Z');
+  return Math.round((b - a) / 86400000) + 1;
+}
+
+// Hitung rekap gaji per karyawan untuk satu periode (records sudah difilter ke rentang periode).
+function computePayrollSummary(records, config, from, to) {
+  const totalHariPeriode = countDaysInclusive(from, to);
+  const toleransi = config.toleransiTerlambatMenit || 0;
+  const daily = computePayrollDailyByEmployeeDate(records, toleransi);
+
+  const byEmployee = {};
+  const empByName = {};
+  for (const emp of config.employees) empByName[emp.name] = emp;
+
+  for (const key of Object.keys(daily)) {
+    const [employee] = key.split('|');
+    if (!byEmployee[employee]) {
+      byEmployee[employee] = {
+        employee, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatKali: 0,
+        lemburAkhirMenit: 0, pulangCepatMenit: 0,
+      };
+    }
+    const e = byEmployee[employee];
+    const d = daily[key];
+    if (d.hadir) e.hariHadir += 1;
+    e.lemburAwalMenit += d.lemburAwalMenit;
+    e.lemburAkhirMenit += d.lemburAkhirMenit;
+    e.pulangCepatMenit += d.pulangCepatMenit;
+    if (d.terlambatMenit > 0) { e.terlambatMenit += d.terlambatMenit; e.terlambatKali += 1; }
+  }
+  // Pastikan semua karyawan terdaftar muncul walau tidak ada record sama sekali di periode ini.
+  for (const emp of config.employees) {
+    if (!byEmployee[emp.name]) {
+      byEmployee[emp.name] = { employee: emp.name, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatKali: 0, lemburAkhirMenit: 0, pulangCepatMenit: 0 };
+    }
+  }
+
+  const result = Object.values(byEmployee).map((e) => {
+    const emp = empByName[e.employee] || {};
+    const gajiPokok = Number(emp.gajiPokok) || 0;
+    const gajiHarian = gajiPokok / 30;
+    const upahJam = Number(emp.upahLemburPerJam) > 0 ? Number(emp.upahLemburPerJam) : gajiPokok / 240;
+
+    const hariTidakHadir = Math.max(0, totalHariPeriode - e.hariHadir);
+    const offBerlebih = Math.max(0, hariTidakHadir - (config.jatahOffPerPeriode || 0));
+
+    const uangMakan = e.hariHadir * (config.uangMakanPerHari || 0);
+    const uangTransport = e.hariHadir * (config.uangTransportPerHari || 0);
+    const lemburAwalJam = Math.round((e.lemburAwalMenit / 60) * 100) / 100;
+    const lemburAkhirJam = Math.round((e.lemburAkhirMenit / 60) * 100) / 100;
+    const pulangCepatJam = Math.round((e.pulangCepatMenit / 60) * 100) / 100;
+    const terlambatJam = Math.round((e.terlambatMenit / 60) * 100) / 100;
+
+    const lemburAwalRp = Math.round(lemburAwalJam * upahJam);
+    const lemburAkhirRp = Math.round(lemburAkhirJam * upahJam);
+    const totalPendapatan = gajiPokok + uangMakan + lemburAwalRp + lemburAkhirRp;
+
+    const kerajinanEligible = offBerlebih === 0 && e.terlambatKali <= (config.maksTerlambatUntukKerajinan ?? 2);
+    const kerajinan = kerajinanEligible ? Math.round(totalPendapatan * 0.1) : 0;
+
+    const potonganOff = Math.round(offBerlebih * gajiHarian * (config.pengaliPotonganOff || 0));
+    const potonganTerlambat = Math.round(terlambatJam * upahJam);
+    const potonganPulangCepat = Math.round(pulangCepatJam * upahJam);
+    const totalPotongan = potonganOff + potonganTerlambat + potonganPulangCepat;
+
+    const gajiBersih = totalPendapatan + kerajinan + uangTransport - totalPotongan;
+
+    return {
+      employee: e.employee,
+      gajiPokok, upahPerJam: Math.round(upahJam),
+      hariHadir: e.hariHadir, hariTidakHadir, offBerlebih,
+      terlambatKali: e.terlambatKali, terlambatJam, pulangCepatJam, lemburAwalJam, lemburAkhirJam,
+      uangMakan, uangTransport, lemburAwalRp, lemburAkhirRp, totalPendapatan,
+      kerajinanEligible, kerajinan,
+      potonganOff, potonganTerlambat, potonganPulangCepat, totalPotongan,
+      gajiBersih,
+    };
+  });
   return result;
 }
 
@@ -567,6 +709,17 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { month, summary, workStartTime: config.workStartTime });
     }
 
+    // ---- Rekap gaji untuk admin (rentang tanggal bebas, biasanya periode gajian 26 - 25) ----
+    if (pathName === '/api/payroll' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from dan to (YYYY-MM-DD) wajib diisi' });
+      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
+      const payroll = computePayrollSummary(records, config, from, to);
+      return sendJSON(res, 200, { from, to, payroll });
+    }
+
     // ---- Laporan untuk otomasi (dilindungi report key, bukan token admin) ----
     if (pathName === '/api/daily-report' && req.method === 'GET') {
       const key = url.searchParams.get('key');
@@ -694,7 +847,9 @@ const server = http.createServer(async (req, res) => {
         validRadius: r.withinRadius ? 'Valid' : `Di luar radius (${r.distanceMeters} m)`,
       }));
 
-      return sendJSON(res, 200, { from, to, summary, detail });
+      const payroll = computePayrollSummary(records, config, from, to);
+
+      return sendJSON(res, 200, { from, to, summary, detail, payroll });
     }
 
     if (pathName === '/api/config' && req.method === 'GET') {
