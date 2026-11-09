@@ -542,6 +542,8 @@ const server = http.createServer(async (req, res) => {
       const todayRecords = allPhoneRecords.filter((r) => r.dateKey === todayKey);
       const todayMasuk = todayRecords.find((r) => r.type === 'masuk');
       const todayKeluar = todayRecords.find((r) => r.type === 'keluar');
+      const todayLemburMasuk = todayRecords.find((r) => r.type === 'lembur_masuk');
+      const todayLemburKeluar = todayRecords.find((r) => r.type === 'lembur_keluar');
 
       return sendJSON(res, 200, {
         name: emp.name,
@@ -561,6 +563,8 @@ const server = http.createServer(async (req, res) => {
           dateKey: todayKey,
           masuk: todayMasuk ? todayMasuk.timeHHMM : null,
           keluar: todayKeluar ? todayKeluar.timeHHMM : null,
+          lemburMasuk: todayLemburMasuk ? todayLemburMasuk.timeHHMM : null,
+          lemburKeluar: todayLemburKeluar ? todayLemburKeluar.timeHHMM : null,
         },
       });
     }
@@ -614,13 +618,14 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 401, { error: 'Password salah' });
     }
 
-    // ---- Absen (check-in / check-out) ----
+    // ---- Absen (check-in / check-out / lembur masuk / lembur pulang) ----
     if (pathName === '/api/checkin' && req.method === 'POST') {
       const raw = await readBody(req);
       const body = JSON.parse(raw.toString('utf8'));
       const { phone, type, lat, lng, photoBase64, deviceTime, shift } = body;
 
-      if (!phone || !type || typeof lat !== 'number' || typeof lng !== 'number' || !photoBase64) {
+      const validTypes = ['masuk', 'keluar', 'lembur_masuk', 'lembur_keluar'];
+      if (!phone || !validTypes.includes(type) || typeof lat !== 'number' || typeof lng !== 'number' || !photoBase64) {
         return sendJSON(res, 400, { error: 'Data tidak lengkap (nomor telepon, tipe, lokasi, foto wajib diisi)' });
       }
       const emp = config.employees.find((e) => e.phone === String(phone).trim());
@@ -634,7 +639,8 @@ const server = http.createServer(async (req, res) => {
       const nearest = nearestLocation(lat, lng, config.locations);
       const withinRadius = nearest.withinRadius;
 
-      // Shift wajib dipilih saat absen masuk; dicocokkan ke daftar shift lokasi terdekat.
+      // Shift wajib dipilih saat absen masuk reguler; dicocokkan ke daftar shift lokasi terdekat.
+      // Lembur Masuk/Lembur Pulang tidak terikat jadwal shift ataupun batasan waktu.
       let shiftInfo = null;
       if (type === 'masuk') {
         if (!shift) return sendJSON(res, 400, { error: 'Pilih shift terlebih dahulu.' });
@@ -652,7 +658,7 @@ const server = http.createServer(async (req, res) => {
         id,
         phone: emp.phone,
         employee: emp.name,
-        type, // 'masuk' | 'keluar'
+        type, // 'masuk' | 'keluar' | 'lembur_masuk' | 'lembur_keluar'
         lat,
         lng,
         nearestLocation: nearest.name,

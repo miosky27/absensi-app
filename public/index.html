@@ -73,6 +73,7 @@
   .stat-box .slbl { font-size:11px; color:#666; margin-top:2px; }
   .today-card { background:linear-gradient(135deg,#8a3380,#5c1d52); border-radius:14px; padding:14px; margin-bottom:16px; }
   .today-card .tc-label { color:#f1dcec; font-size:12px; margin-bottom:10px; }
+  .lembur-card { background:linear-gradient(135deg,#b8862f,#7a5410); }
   .today-row { display:flex; gap:10px; }
   .today-box {
     flex:1; border-radius:10px; padding:12px; border:none; text-align:left; cursor:pointer;
@@ -181,6 +182,14 @@
       <div class="today-row">
         <button type="button" class="today-box in" id="btnMasuk"><div class="tb-lbl">Check In</div><div class="tb-time" id="todayMasuk">Absen Masuk</div></button>
         <button type="button" class="today-box out" id="btnKeluar"><div class="tb-lbl">Check Out</div><div class="tb-time" id="todayKeluar">Absen Keluar</div></button>
+      </div>
+    </div>
+
+    <div class="today-card lembur-card" id="lemburCard">
+      <div class="tc-label">Lembur <span class="muted" style="color:#e8d9a8">(di luar jadwal shift, kapan saja)</span></div>
+      <div class="today-row">
+        <button type="button" class="today-box in" id="btnLemburMasuk"><div class="tb-lbl">Lembur Masuk</div><div class="tb-time" id="todayLemburMasuk">Mulai Lembur</div></button>
+        <button type="button" class="today-box out" id="btnLemburKeluar"><div class="tb-lbl">Lembur Pulang</div><div class="tb-time" id="todayLemburKeluar">Selesai Lembur</div></button>
       </div>
     </div>
 
@@ -454,6 +463,25 @@ function renderTodayButtons(today) {
     lblK.textContent = 'Absen Keluar';
     btnK.disabled = false;
   }
+
+  const btnLM = document.getElementById('btnLemburMasuk');
+  const btnLK = document.getElementById('btnLemburKeluar');
+  const lblLM = document.getElementById('todayLemburMasuk');
+  const lblLK = document.getElementById('todayLemburKeluar');
+  if (today.lemburMasuk) {
+    lblLM.textContent = today.lemburMasuk + ' WIB';
+    btnLM.disabled = true;
+  } else {
+    lblLM.textContent = 'Mulai Lembur';
+    btnLM.disabled = false;
+  }
+  if (today.lemburKeluar) {
+    lblLK.textContent = today.lemburKeluar + ' WIB';
+    btnLK.disabled = true;
+  } else {
+    lblLK.textContent = 'Selesai Lembur';
+    btnLK.disabled = false;
+  }
 }
 
 async function loadHistory() {
@@ -500,8 +528,9 @@ async function loadHistory() {
 
     order.forEach((dateKey) => {
       const d = byDate[dateKey];
-      const ref = d.masuk || d.keluar;
+      const ref = d.masuk || d.keluar || d.lembur_masuk || d.lembur_keluar;
       const anyInvalid = (d.masuk && !d.masuk.withinRadius) || (d.keluar && !d.keluar.withinRadius);
+      const hasLembur = d.lembur_masuk || d.lembur_keluar;
       const card = document.createElement('div');
       card.className = 'day-card';
       const dateLabel = new Date(dateKey + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -509,6 +538,10 @@ async function loadHistory() {
         <div class="dc-date">${dateLabel}</div>
         <div class="dc-row"><span class="dc-lbl">Check In</span><span style="display:flex;align-items:center;gap:6px"><span class="dc-time">${d.masuk ? d.masuk.timeHHMM + ' WIB' : '—'}</span>${attendanceStatusBadge(d.masuk)}</span></div>
         <div class="dc-row"><span class="dc-lbl">Check Out</span><span style="display:flex;align-items:center;gap:6px"><span class="dc-time">${d.keluar ? d.keluar.timeHHMM + ' WIB' : '—'}</span>${attendanceStatusBadge(d.keluar)}</span></div>
+        ${hasLembur ? `
+        <div class="dc-row"><span class="dc-lbl">Lembur Masuk</span><span class="dc-time">${d.lembur_masuk ? d.lembur_masuk.timeHHMM + ' WIB' : '—'}</span></div>
+        <div class="dc-row"><span class="dc-lbl">Lembur Pulang</span><span class="dc-time">${d.lembur_keluar ? d.lembur_keluar.timeHHMM + ' WIB' : '—'}</span></div>
+        ` : ''}
         <div class="dc-meta">${ref.shift ? ref.shift + ' • ' : ''}${ref.nearestLocation || ''}${anyInvalid ? ' • <span style="color:#c5221f">di luar radius</span>' : ''}</div>
       `;
       historyList.appendChild(card);
@@ -582,6 +615,18 @@ async function startAbsen(type) {
 document.getElementById('btnMasuk').addEventListener('click', () => startAbsen('masuk'));
 document.getElementById('btnKeluar').addEventListener('click', () => startAbsen('keluar'));
 
+// Lembur Masuk/Lembur Pulang: di luar jadwal shift, tanpa pilih shift dan tanpa batasan waktu.
+// Lokasi GPS tetap diambil (sama seperti absen keluar) untuk kelengkapan data, hanya saja
+// hasilnya tidak dicocokkan ke radius/jadwal shift mana pun.
+function startLembur(type) {
+  currentType = type;
+  currentShift = null;
+  photoInput.value = '';
+  photoInput.click();
+}
+document.getElementById('btnLemburMasuk').addEventListener('click', () => startLembur('lembur_masuk'));
+document.getElementById('btnLemburKeluar').addEventListener('click', () => startLembur('lembur_keluar'));
+
 function showShiftPicker(locationName, shifts) {
   shiftLocationName.textContent = locationName;
   shiftOptions.innerHTML = '';
@@ -616,8 +661,8 @@ photoInput.addEventListener('change', async () => {
 
   try {
     // Untuk absen masuk, lokasi sudah diambil sebelumnya (saat pilih shift).
-    // Untuk absen keluar, ambil lokasi sekarang.
-    if (currentType === 'keluar') {
+    // Untuk absen keluar dan lembur masuk/pulang, ambil lokasi sekarang.
+    if (currentType === 'keluar' || currentType === 'lembur_masuk' || currentType === 'lembur_keluar') {
       showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
       const coords = await getLocation();
       currentLat = coords.latitude;
