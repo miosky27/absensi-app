@@ -89,7 +89,13 @@
   </div>
 
   <div class="card" id="actionCard" style="display:none">
-    <div class="sub">Halo, <span class="name-tag" id="empName"></span></div>
+    <div class="profile-head">
+      <img class="profile-avatar" id="historyAvatar" src="" onerror="this.style.visibility='hidden'" />
+      <div class="profile-info">
+        <div class="pname" id="empName"></div>
+        <div class="pmeta" id="historyEmpMeta"></div>
+      </div>
+    </div>
 
     <div class="row-2" style="margin-bottom:14px">
       <button class="btn btn-primary" id="btnMasuk">Absen Masuk</button>
@@ -100,27 +106,6 @@
     <img id="preview" class="preview" />
 
     <div class="status" id="actionStatus"></div>
-    <button class="btn btn-secondary" id="btnRiwayat">Lihat Riwayat Absensi Saya</button>
-    <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
-  </div>
-
-  <div class="card" id="shiftCard" style="display:none">
-    <div class="sub">Lokasi terdeteksi: <span class="name-tag" id="shiftLocationName"></span></div>
-    <label>Pilih Shift Anda Hari Ini</label>
-    <div id="shiftOptions"></div>
-    <button class="btn btn-secondary" id="batalShift">Batal</button>
-  </div>
-
-  <div class="card" id="historyCard" style="display:none">
-    <div class="profile-head">
-      <img class="profile-avatar" id="historyAvatar" src="" onerror="this.style.visibility='hidden'" />
-      <div class="profile-info">
-        <div class="pname" id="historyEmpName"></div>
-        <div class="pmeta" id="historyEmpMeta"></div>
-      </div>
-    </div>
-
-    <input type="month" id="historyMonthInput" style="width:100%;padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:16px;margin-bottom:14px" />
 
     <div class="stat-row" id="statRow" style="display:none">
       <div class="stat-box"><div class="snum" id="statHadir">0</div><div class="slbl">Hari Hadir</div></div>
@@ -136,10 +121,21 @@
       </div>
     </div>
 
-    <div class="muted" style="margin-bottom:6px">Riwayat Harian</div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px">
+      <span class="muted">Riwayat Harian</span>
+      <input type="month" id="historyMonthInput" style="padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:13px" />
+    </div>
     <div id="historyList"></div>
     <div class="hint" id="historyEmpty"></div>
-    <button class="btn btn-secondary" id="tutupRiwayat" style="margin-top:10px">Tutup</button>
+
+    <button class="btn btn-secondary" id="gantiNomor" style="margin-top:10px">Ganti Nomor</button>
+  </div>
+
+  <div class="card" id="shiftCard" style="display:none">
+    <div class="sub">Lokasi terdeteksi: <span class="name-tag" id="shiftLocationName"></span></div>
+    <label>Pilih Shift Anda Hari Ini</label>
+    <div id="shiftOptions"></div>
+    <button class="btn btn-secondary" id="batalShift">Batal</button>
   </div>
 
   <div class="muted" style="text-align:center">
@@ -188,9 +184,17 @@ document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
     currentPhone = phone;
     currentProfile = data;
     empName.textContent = data.name;
+    document.getElementById('historyEmpMeta').textContent = [data.position, data.idNumber ? 'ID: ' + data.idNumber : ''].filter(Boolean).join(' • ');
+    const avatarEl = document.getElementById('historyAvatar');
+    if (data.photoUrl) { avatarEl.src = data.photoUrl; avatarEl.style.visibility = 'visible'; }
+    else { avatarEl.style.visibility = 'hidden'; }
+
     phoneCard.style.display = 'none';
     actionCard.style.display = 'block';
     phoneStatus.style.display = 'none';
+
+    historyMonthInput.value = new Date().toISOString().slice(0, 7);
+    loadHistory();
   } catch (e) {
     showStatus(phoneStatus, 'Gagal menghubungi server: ' + e.message, 'err');
   }
@@ -203,23 +207,10 @@ document.getElementById('gantiNomor').addEventListener('click', () => {
   actionStatus.style.display = 'none';
 });
 
-// ---- Riwayat Absensi Saya ----
-const historyCard = document.getElementById('historyCard');
+// ---- Riwayat & ringkasan absensi (bagian dari halaman utama) ----
 const historyMonthInput = document.getElementById('historyMonthInput');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
-
-document.getElementById('btnRiwayat').addEventListener('click', () => {
-  historyMonthInput.value = new Date().toISOString().slice(0, 7);
-  actionCard.style.display = 'none';
-  historyCard.style.display = 'block';
-  loadHistory();
-});
-
-document.getElementById('tutupRiwayat').addEventListener('click', () => {
-  historyCard.style.display = 'none';
-  actionCard.style.display = 'block';
-});
 
 historyMonthInput.addEventListener('change', loadHistory);
 
@@ -240,7 +231,7 @@ async function loadHistory() {
     if (!res.ok) { historyEmpty.textContent = data.error || 'Gagal memuat riwayat'; return; }
 
     // Profil
-    document.getElementById('historyEmpName').textContent = data.name;
+    empName.textContent = data.name;
     document.getElementById('historyEmpMeta').textContent = [data.position, data.idNumber ? 'ID: ' + data.idNumber : ''].filter(Boolean).join(' • ');
     const avatarEl = document.getElementById('historyAvatar');
     if (data.photoUrl) { avatarEl.src = data.photoUrl; avatarEl.style.visibility = 'visible'; }
@@ -422,6 +413,7 @@ photoInput.addEventListener('change', async () => {
         const data = await res.json();
         if (!res.ok) return showStatus(actionStatus, data.error || 'Gagal mengirim absen', 'err');
         showStatus(actionStatus, data.message, data.withinRadius ? 'ok' : 'warn');
+        loadHistory();
       } catch (e) {
         showStatus(actionStatus, 'Gagal mengirim: ' + e.message, 'err');
       }
