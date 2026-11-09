@@ -187,6 +187,29 @@ function computeLemburByEmployeeDate(records) {
   return result;
 }
 
+// Lembur eksplisit (tombol "Lembur Masuk"/"Lembur Pulang"): di luar jadwal shift, tanpa
+// potongan jam kerja standar — seluruh durasi antara Lembur Masuk dan Lembur Pulang dihitung
+// sebagai jam lembur. Mengembalikan Map: "nama|tanggal" -> menit lembur tambahan.
+function computeLemburTambahanByEmployeeDate(records) {
+  const grouped = {};
+  for (const r of records) {
+    const key = r.employee + '|' + r.dateKey;
+    if (!grouped[key]) grouped[key] = { masuk: null, keluar: null };
+    const menit = timeToMinutes(r.timeHHMM);
+    if (r.type === 'lembur_masuk') {
+      if (grouped[key].masuk === null || menit < grouped[key].masuk) grouped[key].masuk = menit;
+    } else if (r.type === 'lembur_keluar') {
+      if (grouped[key].keluar === null || menit > grouped[key].keluar) grouped[key].keluar = menit;
+    }
+  }
+  const result = {};
+  for (const key of Object.keys(grouped)) {
+    const { masuk, keluar } = grouped[key];
+    result[key] = (masuk !== null && keluar !== null && keluar > masuk) ? (keluar - masuk) : 0;
+  }
+  return result;
+}
+
 // ---------- Perhitungan gaji (metode JADWAL: dibandingkan ke jam shift resmi) ----------
 // Untuk tiap (karyawan, tanggal): shift acuan diambil dari record MASUK (karyawan memilih shift
 // saat absen masuk). Dari situ dihitung:
@@ -258,6 +281,12 @@ function computePayrollSummary(records, config, from, to) {
   const totalHariPeriode = countDaysInclusive(from, to);
   const toleransi = config.toleransiTerlambatMenit || 0;
   const daily = computePayrollDailyByEmployeeDate(records, toleransi);
+  const lemburTambahan = computeLemburTambahanByEmployeeDate(records);
+
+  const makeEmpty = (employee) => ({
+    employee, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatKali: 0,
+    lemburAkhirMenit: 0, pulangCepatMenit: 0, lemburTambahanMenit: 0,
+  });
 
   const byEmployee = {};
   const empByName = {};
@@ -265,12 +294,7 @@ function computePayrollSummary(records, config, from, to) {
 
   for (const key of Object.keys(daily)) {
     const [employee] = key.split('|');
-    if (!byEmployee[employee]) {
-      byEmployee[employee] = {
-        employee, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatKali: 0,
-        lemburAkhirMenit: 0, pulangCepatMenit: 0,
-      };
-    }
+    if (!byEmployee[employee]) byEmployee[employee] = makeEmpty(employee);
     const e = byEmployee[employee];
     const d = daily[key];
     if (d.hadir) e.hariHadir += 1;
@@ -279,11 +303,16 @@ function computePayrollSummary(records, config, from, to) {
     e.pulangCepatMenit += d.pulangCepatMenit;
     if (d.terlambatMenit > 0) { e.terlambatMenit += d.terlambatMenit; e.terlambatKali += 1; }
   }
+  // Jam lembur tambahan (tombol Lembur Masuk/Pulang) bisa ada pada tanggal tanpa absen
+  // shift biasa sama sekali, jadi digabung terpisah dari grup `daily` di atas.
+  for (const key of Object.keys(lemburTambahan)) {
+    const [employee] = key.split('|');
+    if (!byEmployee[employee]) byEmployee[employee] = makeEmpty(employee);
+    byEmployee[employee].lemburTambahanMenit += lemburTambahan[key];
+  }
   // Pastikan semua karyawan terdaftar muncul walau tidak ada record sama sekali di periode ini.
   for (const emp of config.employees) {
-    if (!byEmployee[emp.name]) {
-      byEmployee[emp.name] = { employee: emp.name, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatKali: 0, lemburAkhirMenit: 0, pulangCepatMenit: 0 };
-    }
+    if (!byEmployee[emp.name]) byEmployee[emp.name] = makeEmpty(emp.name);
   }
 
   const result = Object.values(byEmployee).map((e) => {
@@ -301,10 +330,12 @@ function computePayrollSummary(records, config, from, to) {
     const lemburAkhirJam = Math.round((e.lemburAkhirMenit / 60) * 100) / 100;
     const pulangCepatJam = Math.round((e.pulangCepatMenit / 60) * 100) / 100;
     const terlambatJam = Math.round((e.terlambatMenit / 60) * 100) / 100;
+    const lemburTambahanJam = Math.round((e.lemburTambahanMenit / 60) * 100) / 100;
 
     const lemburAwalRp = Math.round(lemburAwalJam * upahJam);
     const lemburAkhirRp = Math.round(lemburAkhirJam * upahJam);
-    const totalPendapatan = gajiPokok + uangMakan + lemburAwalRp + lemburAkhirRp;
+    const lemburTambahanRp = Math.round(lemburTambahanJam * upahJam);
+    const totalPendapatan = gajiPokok + uangMakan + lemburAwalRp + lemburAkhirRp + lemburTambahanRp;
 
     const kerajinanEligible = offBerlebih === 0 && e.terlambatKali <= (config.maksTerlambatUntukKerajinan ?? 2);
     const kerajinan = kerajinanEligible ? Math.round(totalPendapatan * 0.1) : 0;
@@ -321,6 +352,7 @@ function computePayrollSummary(records, config, from, to) {
       gajiPokok, upahPerJam: Math.round(upahJam),
       hariHadir: e.hariHadir, hariTidakHadir, offBerlebih,
       terlambatKali: e.terlambatKali, terlambatJam, pulangCepatJam, lemburAwalJam, lemburAkhirJam,
+      lemburTambahanJam, lemburTambahanRp,
       uangMakan, uangTransport, lemburAwalRp, lemburAkhirRp, totalPendapatan,
       kerajinanEligible, kerajinan,
       potonganOff, potonganTerlambat, potonganPulangCepat, totalPotongan,
