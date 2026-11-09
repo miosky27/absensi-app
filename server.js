@@ -516,6 +516,8 @@ const server = http.createServer(async (req, res) => {
         timeHHMM: r.timeHHMM,
         type: r.type,
         shift: r.shift,
+        shiftStart: r.shiftStart || null,
+        shiftEnd: r.shiftEnd || null,
         nearestLocation: r.nearestLocation,
         withinRadius: r.withinRadius,
         distanceMeters: r.distanceMeters,
@@ -549,6 +551,7 @@ const server = http.createServer(async (req, res) => {
         month,
         records: result,
         totalLemburJam,
+        toleransiMenit: config.toleransiTerlambatMenit || 0,
         summary: {
           hariHadir: hariHadirSet.size,
           terlambatJam: Math.floor(terlambatMenit / 60),

@@ -24,6 +24,11 @@
   .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight:700; }
   .badge.ok { background:#e6f4ea; color:#137333; }
   .badge.bad { background:#fce8e6; color:#c5221f; }
+  .badge.ontime { background:#e3eefc; color:#1a56b0; }
+  .badge.late { background:#f1e3ee; color:#702464; }
+  .badge.early { background:#eceff1; color:#555; }
+  .badge.overtime { background:#e6f4ea; color:#137333; }
+  .badge.absent { background:#fce4ec; color:#c2185b; }
   .thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; cursor: pointer; }
   .field { margin-bottom: 12px; }
   .field label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#444; }
@@ -77,7 +82,7 @@
       <div class="summary-grid" id="summaryGrid"></div>
       <div style="overflow-x:auto">
       <table id="dailyTable">
-        <thead><tr><th>Foto</th><th>Nama</th><th>Jam</th><th>Tipe</th><th>Lokasi</th></tr></thead>
+        <thead><tr><th>Foto</th><th>Nama</th><th>Jam</th><th>Tipe</th><th>Status</th><th>Lokasi</th></tr></thead>
         <tbody></tbody>
       </table>
       </div>
@@ -227,6 +232,7 @@ async function loadDaily() {
       <td>${r.employee}</td>
       <td>${r.timeHHMM}</td>
       <td>${r.type === 'masuk' ? 'Masuk' : 'Keluar'}${r.shift ? ` <span class="hint">(${r.shift})</span>` : ''}</td>
+      <td>${attendanceStatusBadge(r)}</td>
       <td><span class="badge ${r.withinRadius ? 'ok' : 'bad'}">${r.withinRadius ? 'Valid' : r.distanceMeters + 'm'}</span> <span class="hint">${r.nearestLocation || ''}</span></td>
     `;
     tbody.appendChild(tr);
@@ -241,7 +247,8 @@ async function loadDaily() {
       <td>—</td>
       <td>${emp.name}</td>
       <td>—</td>
-      <td><span class="badge bad">Tidak Absen Masuk</span></td>
+      <td>—</td>
+      <td><span class="badge absent">Tidak Absen</span></td>
       <td>—</td>
     `;
     tbody.appendChild(tr);
@@ -252,6 +259,29 @@ async function loadDaily() {
 }
 
 let currentWorkStart = '08:00'; // fallback kalau record tidak punya data shift (data lama)
+let currentToleransi = 15;
+
+// ---- Status badge waktu absen (mengacu pada jam shift resmi, warna seperti Pintar HR) ----
+function timeToMinutes(hhmm) {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+function attendanceStatusBadge(r) {
+  if (!r) return '';
+  const t = timeToMinutes(r.timeHHMM);
+  if (r.type === 'masuk') {
+    const start = timeToMinutes(r.shiftStart) ?? timeToMinutes(currentWorkStart);
+    if (start === null) return '';
+    if (t > start + currentToleransi) return '<span class="badge late">Terlambat</span>';
+    return '<span class="badge ontime">Tepat Waktu</span>';
+  }
+  const end = timeToMinutes(r.shiftEnd);
+  if (end === null) return '';
+  if (t > end) return '<span class="badge overtime">Lembur</span>';
+  if (t < end) return '<span class="badge early">Pulang Cepat</span>';
+  return '<span class="badge ontime">Tepat Waktu</span>';
+}
 
 function renderSummary(records) {
   const totalEmployees = currentEmployees.length;
@@ -366,6 +396,7 @@ async function loadConfig() {
   const res = await fetch('/api/config', { headers: authHeaders() });
   const cfg = await res.json();
   currentWorkStart = cfg.workStartTime || '08:00';
+  currentToleransi = cfg.toleransiTerlambatMenit ?? 15;
   currentEmployees = cfg.employees || [];
   currentLocations = cfg.locations && cfg.locations.length ? cfg.locations : [{ name: '', lat: '', lng: '', radiusMeters: 10, shifts: [] }];
   currentLocations.forEach((loc) => { if (!Array.isArray(loc.shifts)) loc.shifts = []; });

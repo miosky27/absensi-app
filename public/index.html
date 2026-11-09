@@ -54,6 +54,14 @@
   .hist-badge.ok { background:#e6f4ea; color:#137333; }
   .hist-badge.bad { background:#fce8e6; color:#c5221f; }
 
+  /* ---- Status badge waktu absen (tepat waktu/terlambat/pulang cepat/lembur) ---- */
+  .stat-badge { padding:2px 8px; border-radius:8px; font-size:10px; font-weight:700; white-space:nowrap; }
+  .stat-badge.ontime { background:#e3eefc; color:#1a56b0; }
+  .stat-badge.late { background:#f1e3ee; color:#702464; }
+  .stat-badge.early { background:#eceff1; color:#555; }
+  .stat-badge.overtime { background:#e6f4ea; color:#137333; }
+  .stat-badge.absent { background:#fce4ec; color:#c2185b; }
+
   /* ---- Profil & dashboard riwayat ---- */
   .profile-head { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
   .profile-avatar { width:54px; height:54px; border-radius:50%; object-fit:cover; background:#e8eaed; border:1px solid #eee; flex-shrink:0; }
@@ -401,6 +409,31 @@ function fmtTerlambat(jam, menit) {
   return (jam > 0 ? jam + 'j ' : '') + menit + 'm';
 }
 
+// ---- Status badge waktu absen (mengacu pada jam shift resmi, warna seperti Pintar HR) ----
+function timeToMinutes(hhmm) {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+let currentToleransiMenit = 15;
+
+function attendanceStatusBadge(record) {
+  if (!record) return '';
+  const t = timeToMinutes(record.timeHHMM);
+  if (record.type === 'masuk') {
+    const start = timeToMinutes(record.shiftStart);
+    if (start === null) return '';
+    if (t > start + currentToleransiMenit) return '<span class="stat-badge late">Terlambat</span>';
+    return '<span class="stat-badge ontime">Tepat Waktu</span>';
+  }
+  // keluar
+  const end = timeToMinutes(record.shiftEnd);
+  if (end === null) return '';
+  if (t > end) return '<span class="stat-badge overtime">Lembur</span>';
+  if (t < end) return '<span class="stat-badge early">Pulang Cepat</span>';
+  return '<span class="stat-badge ontime">Tepat Waktu</span>';
+}
+
 function renderTodayButtons(today) {
   const btnM = document.getElementById('btnMasuk');
   const btnK = document.getElementById('btnKeluar');
@@ -449,6 +482,7 @@ async function loadHistory() {
 
     // Tombol Absen Masuk/Keluar sekaligus menampilkan jam absen hari ini (selalu, apa pun bulan yang sedang dilihat).
     renderTodayButtons(data.today);
+    currentToleransiMenit = data.toleransiMenit ?? 15;
 
     if (!data.records || data.records.length === 0) {
       historyEmpty.textContent = 'Belum ada riwayat absen di bulan ini.';
@@ -473,8 +507,8 @@ async function loadHistory() {
       const dateLabel = new Date(dateKey + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
       card.innerHTML = `
         <div class="dc-date">${dateLabel}</div>
-        <div class="dc-row"><span class="dc-lbl">Check In</span><span class="dc-time">${d.masuk ? d.masuk.timeHHMM + ' WIB' : '—'}</span></div>
-        <div class="dc-row"><span class="dc-lbl">Check Out</span><span class="dc-time">${d.keluar ? d.keluar.timeHHMM + ' WIB' : '—'}</span></div>
+        <div class="dc-row"><span class="dc-lbl">Check In</span><span style="display:flex;align-items:center;gap:6px"><span class="dc-time">${d.masuk ? d.masuk.timeHHMM + ' WIB' : '—'}</span>${attendanceStatusBadge(d.masuk)}</span></div>
+        <div class="dc-row"><span class="dc-lbl">Check Out</span><span style="display:flex;align-items:center;gap:6px"><span class="dc-time">${d.keluar ? d.keluar.timeHHMM + ' WIB' : '—'}</span>${attendanceStatusBadge(d.keluar)}</span></div>
         <div class="dc-meta">${ref.shift ? ref.shift + ' • ' : ''}${ref.nearestLocation || ''}${anyInvalid ? ' • <span style="color:#c5221f">di luar radius</span>' : ''}</div>
       `;
       historyList.appendChild(card);
