@@ -27,8 +27,11 @@
   .field label { display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:#444; }
   .field input { width: 100%; }
   .section-title { font-size: 14px; font-weight:700; margin: 18px 0 8px; }
-  .emp-row { display:flex; gap:8px; margin-bottom:8px; }
-  .emp-row input { flex: 1; }
+  .emp-card { border:1px solid #eee; border-radius:10px; padding:10px; margin-bottom:10px; }
+  .emp-card-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .emp-avatar { background:#f4f6f8; border:1px solid #eee; }
+  .emp-row { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+  .emp-row input { flex: 1; min-width: 100px; }
   .loc-row { display:flex; gap:8px; margin-bottom:8px; flex-wrap: wrap; }
   .loc-row input { flex: 1; min-width: 70px; }
   .loc-row input.loc-name { flex: 1.4; min-width: 110px; }
@@ -94,6 +97,12 @@
       <div class="field" style="margin-top:16px"><label>Ganti Password Admin (kosongkan jika tidak diubah)</label><input type="password" id="cfgPassword" /></div>
 
       <div class="section-title">Daftar Karyawan</div>
+      <div class="hint">Import cepat: siapkan file Excel dengan kolom <b>Nama, No Telepon, No ID, Jabatan</b> (urutan bebas), lalu simpan sebagai CSV (File &gt; Save As &gt; CSV) dan unggah di sini. Karyawan dengan nomor telepon yang sudah ada akan diperbarui, yang baru akan ditambahkan.</div>
+      <div style="margin:8px 0">
+        <input type="file" accept=".csv,text/csv" style="display:none" id="importCsvInput" />
+        <button class="btn secondary" type="button" id="importCsvBtn">📥 Import dari CSV</button>
+        <span id="importCsvStatus" style="font-size:12px;margin-left:8px"></span>
+      </div>
       <div id="empList"></div>
       <button class="btn secondary" id="addEmpBtn" type="button">+ Tambah Karyawan</button>
 
@@ -347,15 +356,28 @@ function renderEmpList() {
   container.innerHTML = '';
   currentEmployees.forEach((emp, i) => {
     const row = document.createElement('div');
-    row.className = 'emp-row';
+    row.className = 'emp-card';
+    const photoSrc = emp.phone ? `/api/employee-photo/${encodeURIComponent(emp.phone)}?t=${Date.now()}` : '';
     row.innerHTML = `
-      <input type="text" placeholder="Nomor telepon" value="${emp.phone}" data-idx="${i}" data-field="phone" />
-      <input type="text" placeholder="Nama karyawan" value="${emp.name}" data-idx="${i}" data-field="name" />
-      <button class="btn secondary" type="button" data-remove="${i}">Hapus</button>
+      <div class="emp-card-top">
+        <img class="thumb emp-avatar" src="${photoSrc}" data-idx="${i}" onerror="this.style.visibility='hidden'" />
+        <input type="file" accept="image/*" capture="environment" style="display:none" data-photoinput="${i}" />
+        <button class="btn secondary" type="button" style="padding:6px 10px;font-size:12px" data-uploadphoto="${i}">Ubah Foto</button>
+        <span class="emp-photo-status" data-status="${i}" style="font-size:12px;color:#137333;margin-left:6px"></span>
+      </div>
+      <div class="emp-row">
+        <input type="text" placeholder="Nomor telepon" value="${emp.phone || ''}" data-idx="${i}" data-field="phone" />
+        <input type="text" placeholder="Nama karyawan" value="${emp.name || ''}" data-idx="${i}" data-field="name" />
+      </div>
+      <div class="emp-row">
+        <input type="text" placeholder="No ID / NIK" value="${emp.idNumber || ''}" data-idx="${i}" data-field="idNumber" />
+        <input type="text" placeholder="Jabatan" value="${emp.position || ''}" data-idx="${i}" data-field="position" />
+        <button class="btn secondary" type="button" data-remove="${i}">Hapus</button>
+      </div>
     `;
     container.appendChild(row);
   });
-  container.querySelectorAll('input').forEach((inp) => {
+  container.querySelectorAll('input[data-field]').forEach((inp) => {
     inp.addEventListener('input', () => {
       currentEmployees[inp.dataset.idx][inp.dataset.field] = inp.value;
     });
@@ -366,11 +388,82 @@ function renderEmpList() {
       renderEmpList();
     });
   });
+  container.querySelectorAll('[data-uploadphoto]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = btn.dataset.uploadphoto;
+      container.querySelector(`input[data-photoinput="${idx}"]`).click();
+    });
+  });
+  container.querySelectorAll('input[data-photoinput]').forEach((fileInp) => {
+    fileInp.addEventListener('change', async () => {
+      const idx = fileInp.dataset.photoinput;
+      const emp = currentEmployees[idx];
+      const statusEl = container.querySelector(`[data-status="${idx}"]`);
+      const file = fileInp.files[0];
+      if (!file) return;
+      if (!emp.phone) {
+        statusEl.style.color = '#c5221f';
+        statusEl.textContent = 'Isi nomor telepon dulu, lalu simpan pengaturan sebelum upload foto.';
+        return;
+      }
+      statusEl.style.color = '#888';
+      statusEl.textContent = 'Mengunggah...';
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const res = await fetch('/api/employees/photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ phone: emp.phone, photoBase64: reader.result }),
+        });
+        if (res.ok) {
+          statusEl.style.color = '#137333';
+          statusEl.textContent = 'Foto tersimpan ✓';
+          renderEmpList();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          statusEl.style.color = '#c5221f';
+          statusEl.textContent = err.error || 'Gagal upload foto';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  });
 }
 
 document.getElementById('addEmpBtn').addEventListener('click', () => {
-  currentEmployees.push({ phone: '', name: '' });
+  currentEmployees.push({ phone: '', name: '', idNumber: '', position: '', photoFilename: null });
   renderEmpList();
+});
+
+// ---- Import karyawan dari file CSV (bisa disimpan dari Excel: File > Save As > CSV) ----
+document.getElementById('importCsvBtn').addEventListener('click', () => {
+  document.getElementById('importCsvInput').click();
+});
+document.getElementById('importCsvInput').addEventListener('change', async () => {
+  const file = document.getElementById('importCsvInput').files[0];
+  const statusEl = document.getElementById('importCsvStatus');
+  if (!file) return;
+  statusEl.style.color = '#888';
+  statusEl.textContent = 'Mengimpor...';
+  try {
+    const csvText = await file.text();
+    const res = await fetch('/api/employees/import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ csv: csvText }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      statusEl.style.color = '#c5221f';
+      statusEl.textContent = data.error || 'Gagal mengimpor file';
+      return;
+    }
+    statusEl.style.color = '#137333';
+    statusEl.textContent = `Berhasil: ${data.added} karyawan baru, ${data.updated} diperbarui.` + (data.errors.length ? ` (${data.errors.length} baris dilewati)` : '');
+    await loadConfig();
+  } catch (e) {
+    statusEl.style.color = '#c5221f';
+    statusEl.textContent = 'Gagal membaca file: ' + e.message;
+  }
+  document.getElementById('importCsvInput').value = '';
 });
 
 document.getElementById('saveCfgBtn').addEventListener('click', async () => {
@@ -388,53 +481,6 @@ document.getElementById('saveCfgBtn').addEventListener('click', async () => {
   const msg = document.getElementById('saveMsg');
   if (res.ok) { msg.textContent = 'Tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); }
   else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan'; }
-});
-
-// ---- Jadwal Kerja (rolling per tanggal) ----
-document.getElementById('jadwalDateInput').addEventListener('change', loadJadwal);
-
-async function loadJadwal() {
-  const date = document.getElementById('jadwalDateInput').value;
-  const res = await fetch('/api/schedules/day?date=' + date, { headers: authHeaders() });
-  const data = await res.json();
-  const byEmployee = {};
-  (data.schedules || []).forEach((s) => { byEmployee[s.employee] = s; });
-
-  const container = document.getElementById('jadwalList');
-  container.innerHTML = '';
-  currentEmployees.forEach((emp) => {
-    const sched = byEmployee[emp.name] || {};
-    const row = document.createElement('div');
-    row.className = 'loc-row';
-    row.innerHTML = `
-      <input type="text" value="${emp.name}" disabled style="flex:1.2;background:#f4f6f8" />
-      <input type="time" placeholder="Jam masuk" value="${sched.startTime || ''}" data-emp="${emp.name}" data-field="startTime" />
-      <input type="time" placeholder="Jam pulang" value="${sched.endTime || ''}" data-emp="${emp.name}" data-field="endTime" />
-    `;
-    container.appendChild(row);
-  });
-  if (currentEmployees.length === 0) {
-    container.innerHTML = '<div class="hint">Belum ada karyawan terdaftar. Tambahkan dulu di tab Pengaturan.</div>';
-  }
-}
-
-document.getElementById('saveJadwalBtn').addEventListener('click', async () => {
-  const date = document.getElementById('jadwalDateInput').value;
-  const inputs = document.querySelectorAll('#jadwalList input[data-emp]');
-  const byEmployee = {};
-  inputs.forEach((inp) => {
-    const emp = inp.dataset.emp;
-    if (!byEmployee[emp]) byEmployee[emp] = { employee: emp };
-    byEmployee[emp][inp.dataset.field] = inp.value;
-  });
-  const entries = Object.values(byEmployee);
-  const res = await fetch('/api/schedules/day', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ date, entries }),
-  });
-  const msg = document.getElementById('jadwalMsg');
-  if (res.ok) { msg.style.color = '#137333'; msg.textContent = 'Jadwal tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); }
-  else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan jadwal'; }
 });
 
 function openOverlay(src) {

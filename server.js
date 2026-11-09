@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
+const EMPLOYEE_PHOTOS_DIR = path.join(DATA_DIR, 'employee-photos');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -21,6 +22,7 @@ function ensureFile(file, defaultValue) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(defaultValue, null, 2));
 }
 ensureFile(RECORDS_FILE, []);
+if (!fs.existsSync(EMPLOYEE_PHOTOS_DIR)) fs.mkdirSync(EMPLOYEE_PHOTOS_DIR, { recursive: true });
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
   // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
@@ -44,8 +46,8 @@ ensureFile(CONFIG_FILE, {
   ],
   // Daftar karyawan: login memakai nomor telepon
   employees: [
-    { phone: "081234567890", name: "Contoh Karyawan 1" },
-    { phone: "081234567891", name: "Contoh Karyawan 2" },
+    { phone: "081234567890", name: "Contoh Karyawan 1", idNumber: "", position: "", photoFilename: null },
+    { phone: "081234567891", name: "Contoh Karyawan 2", idNumber: "", position: "", photoFilename: null },
   ],
   adminPassword: process.env.ADMIN_PASSWORD || "admin123",
   workStartTime: "08:00", // fallback kalau record lama tidak punya data shift
@@ -76,8 +78,45 @@ function migrateConfig(config) {
   for (const loc of config.locations) {
     if (!Array.isArray(loc.shifts)) { loc.shifts = []; changed = true; }
   }
+  // Karyawan lama (sebelum fitur foto/No ID/jabatan) belum punya field-field ini.
+  if (!Array.isArray(config.employees)) config.employees = [];
+  for (const emp of config.employees) {
+    if (emp.idNumber === undefined) { emp.idNumber = ''; changed = true; }
+    if (emp.position === undefined) { emp.position = ''; changed = true; }
+    if (emp.photoFilename === undefined) { emp.photoFilename = null; changed = true; }
+  }
   if (changed || typeof config.officeLat === 'number') writeJSON(CONFIG_FILE, config);
   return config;
+}
+
+// ---------- Parser CSV sederhana (tanpa dependensi eksternal) ----------
+// Mendukung koma sebagai pemisah dan tanda kutip ganda untuk teks yang mengandung koma.
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  const pushField = () => { row.push(field); field = ''; };
+  const pushRow = () => { pushField(); rows.push(row); row = []; };
+  const clean = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  for (let i = 0; i < clean.length; i++) {
+    const c = clean[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (clean[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      pushField();
+    } else if (c === '\n') {
+      pushRow();
+    } else {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) pushRow();
+  return rows.filter((r) => r.some((f) => String(f).trim() !== ''));
 }
 
 // Cari shift berdasarkan nama di dalam sebuah lokasi.
@@ -282,7 +321,12 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       const emp = config.employees.find((e) => e.phone === String(body.phone || '').trim());
       if (!emp) return sendJSON(res, 404, { error: 'Nomor telepon tidak terdaftar' });
-      return sendJSON(res, 200, { name: emp.name });
+      return sendJSON(res, 200, {
+        name: emp.name,
+        idNumber: emp.idNumber || '',
+        position: emp.position || '',
+        photoUrl: emp.photoFilename ? `/api/employee-photo/${encodeURIComponent(emp.phone)}` : null,
+      });
     }
 
     // ---- Riwayat absensi milik karyawan sendiri (identifikasi pakai nomor telepon, tanpa login admin) ----
@@ -307,7 +351,43 @@ const server = http.createServer(async (req, res) => {
         distanceMeters: r.distanceMeters,
       }));
       const totalLemburJam = Math.round((Object.values(lemburMap).reduce((a, b) => a + b, 0) / 60) * 10) / 10;
-      return sendJSON(res, 200, { name: emp.name, month, records: result, totalLemburJam });
+
+      // Ringkasan bulan ini: hari hadir & total keterlambatan (dibandingkan jam mulai shift yang dipilih).
+      const hariHadirSet = new Set();
+      let terlambatMenit = 0;
+      for (const r of records) {
+        hariHadirSet.add(r.dateKey);
+        if (r.type === 'masuk') {
+          const startTime = r.shiftStart || config.workStartTime;
+          if (startTime && r.timeHHMM > startTime) {
+            terlambatMenit += timeToMinutes(r.timeHHMM) - timeToMinutes(startTime);
+          }
+        }
+      }
+      const todayKey = dateKeyJakarta(new Date().toISOString());
+      const todayRecords = records.filter((r) => r.dateKey === todayKey);
+      const todayMasuk = todayRecords.find((r) => r.type === 'masuk');
+      const todayKeluar = todayRecords.find((r) => r.type === 'keluar');
+
+      return sendJSON(res, 200, {
+        name: emp.name,
+        idNumber: emp.idNumber || '',
+        position: emp.position || '',
+        photoUrl: emp.photoFilename ? `/api/employee-photo/${encodeURIComponent(emp.phone)}` : null,
+        month,
+        records: result,
+        totalLemburJam,
+        summary: {
+          hariHadir: hariHadirSet.size,
+          terlambatJam: Math.floor(terlambatMenit / 60),
+          terlambatMenit: terlambatMenit % 60,
+        },
+        today: {
+          dateKey: todayKey,
+          masuk: todayMasuk ? todayMasuk.timeHHMM : null,
+          keluar: todayKeluar ? todayKeluar.timeHHMM : null,
+        },
+      });
     }
 
     // ---- Lokasi terdekat + daftar shift lokasi itu (dipakai saat absen masuk) ----
@@ -417,6 +497,22 @@ const server = http.createServer(async (req, res) => {
       }
       const filename = pathName.replace('/api/photo/', '');
       return servePhoto(req, res, filename);
+    }
+
+    // ---- Foto profil karyawan (untuk ditampilkan di halaman riwayat & admin) ----
+    if (pathName.startsWith('/api/employee-photo/') && req.method === 'GET') {
+      const phone = decodeURIComponent(pathName.replace('/api/employee-photo/', ''));
+      const emp = config.employees.find((e) => e.phone === phone);
+      if (!emp || !emp.photoFilename) {
+        res.writeHead(404);
+        return res.end('Not found');
+      }
+      const filePath = path.join(EMPLOYEE_PHOTOS_DIR, path.basename(emp.photoFilename));
+      return fs.readFile(filePath, (err, data) => {
+        if (err) { res.writeHead(404); return res.end('Not found'); }
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' });
+        res.end(data);
+      });
     }
 
     // ---- Endpoint admin (butuh token) ----
@@ -556,6 +652,72 @@ const server = http.createServer(async (req, res) => {
       if (!updated.adminPassword) updated.adminPassword = config.adminPassword;
       writeJSON(CONFIG_FILE, updated);
       return sendJSON(res, 200, { ok: true });
+    }
+
+    // ---- Upload foto profil karyawan ----
+    if (pathName === '/api/employees/photo' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const { phone, photoBase64 } = body;
+      const fresh = migrateConfig(readJSON(CONFIG_FILE));
+      const emp = fresh.employees.find((e) => e.phone === String(phone || '').trim());
+      if (!emp) return sendJSON(res, 404, { error: 'Karyawan tidak ditemukan' });
+      if (!photoBase64) return sendJSON(res, 400, { error: 'Foto kosong' });
+      const filename = `${emp.phone}.jpg`;
+      const base64Data = String(photoBase64).replace(/^data:image\/\w+;base64,/, '');
+      fs.writeFileSync(path.join(EMPLOYEE_PHOTOS_DIR, filename), Buffer.from(base64Data, 'base64'));
+      emp.photoFilename = filename;
+      writeJSON(CONFIG_FILE, fresh);
+      return sendJSON(res, 200, { ok: true, photoUrl: `/api/employee-photo/${encodeURIComponent(emp.phone)}` });
+    }
+
+    // ---- Import data karyawan dari CSV (ekspor dari Excel: File > Save As > CSV) ----
+    // Kolom yang dikenali (header baris pertama, tidak case-sensitive, urutan bebas):
+    // Nama / Name, No Telepon / Phone / No HP, No ID / NIK / ID, Jabatan / Posisi / Position
+    if (pathName === '/api/employees/import' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const csvText = body.csv;
+      if (!csvText || typeof csvText !== 'string') return sendJSON(res, 400, { error: 'File CSV kosong atau tidak valid' });
+
+      const rows = parseCSV(csvText);
+      if (rows.length < 2) return sendJSON(res, 400, { error: 'File CSV tidak punya data (minimal 1 baris header + 1 baris data)' });
+
+      const header = rows[0].map((h) => String(h).trim().toLowerCase());
+      const findCol = (...names) => header.findIndex((h) => names.includes(h));
+      const colName = findCol('nama', 'name');
+      const colPhone = findCol('no telepon', 'telepon', 'phone', 'no hp', 'nomor telepon', 'nomor hp', 'hp');
+      const colId = findCol('no id', 'nik', 'id', 'id number', 'nomor id');
+      const colPos = findCol('jabatan', 'posisi', 'position');
+
+      if (colName === -1 || colPhone === -1) {
+        return sendJSON(res, 400, { error: 'Kolom "Nama" dan "No Telepon" wajib ada di file CSV.' });
+      }
+
+      const fresh = migrateConfig(readJSON(CONFIG_FILE));
+      let added = 0, updated = 0;
+      const errors = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const name = (r[colName] || '').trim();
+        const phone = (r[colPhone] || '').trim();
+        const idNumber = colId !== -1 ? (r[colId] || '').trim() : '';
+        const position = colPos !== -1 ? (r[colPos] || '').trim() : '';
+        if (!name || !phone) { errors.push(`Baris ${i + 1}: nama/no telepon kosong, dilewati`); continue; }
+
+        const existing = fresh.employees.find((e) => e.phone === phone);
+        if (existing) {
+          existing.name = name;
+          existing.idNumber = idNumber || existing.idNumber || '';
+          existing.position = position || existing.position || '';
+          updated++;
+        } else {
+          fresh.employees.push({ phone, name, idNumber, position, photoFilename: null });
+          added++;
+        }
+      }
+      writeJSON(CONFIG_FILE, fresh);
+      return sendJSON(res, 200, { ok: true, added, updated, errors });
     }
 
     // ---- Static files (halaman) ----

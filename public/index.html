@@ -50,6 +50,30 @@
   .hist-badge { padding:3px 9px; border-radius:10px; font-size:11px; font-weight:700; }
   .hist-badge.ok { background:#e6f4ea; color:#137333; }
   .hist-badge.bad { background:#fce8e6; color:#c5221f; }
+
+  /* ---- Profil & dashboard riwayat ---- */
+  .profile-head { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .profile-avatar { width:54px; height:54px; border-radius:50%; object-fit:cover; background:#e8eaed; border:1px solid #eee; flex-shrink:0; }
+  .profile-info .pname { font-weight:700; font-size:16px; }
+  .profile-info .pmeta { font-size:12px; color:#666; margin-top:2px; }
+  .stat-row { display:flex; gap:10px; margin-bottom:16px; }
+  .stat-box { flex:1; background:#f4f6f8; border-radius:12px; padding:12px 8px; text-align:center; }
+  .stat-box .snum { font-size:18px; font-weight:800; color:#1a1a1a; }
+  .stat-box .slbl { font-size:11px; color:#666; margin-top:2px; }
+  .today-card { background:linear-gradient(135deg,#1a73e8,#1557b0); border-radius:14px; padding:14px; margin-bottom:16px; }
+  .today-card .tc-label { color:#cfe0fb; font-size:12px; margin-bottom:10px; }
+  .today-row { display:flex; gap:10px; }
+  .today-box { flex:1; border-radius:10px; padding:10px 12px; }
+  .today-box.in { background:rgba(255,255,255,0.18); }
+  .today-box.out { background:rgba(255,255,255,0.18); }
+  .today-box .tb-lbl { color:#e8f0fe; font-size:11px; font-weight:600; }
+  .today-box .tb-time { color:#fff; font-size:18px; font-weight:800; margin-top:2px; }
+  .day-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
+  .day-card .dc-date { font-weight:700; font-size:13px; margin-bottom:8px; }
+  .day-card .dc-row { display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:4px 0; }
+  .day-card .dc-row .dc-lbl { color:#666; }
+  .day-card .dc-row .dc-time { font-weight:700; }
+  .day-card .dc-meta { font-size:11px; color:#888; margin-top:6px; }
 </style>
 </head>
 <body>
@@ -88,9 +112,31 @@
   </div>
 
   <div class="card" id="historyCard" style="display:none">
-    <div class="sub">Riwayat Absensi: <span class="name-tag" id="historyEmpName"></span></div>
+    <div class="profile-head">
+      <img class="profile-avatar" id="historyAvatar" src="" onerror="this.style.visibility='hidden'" />
+      <div class="profile-info">
+        <div class="pname" id="historyEmpName"></div>
+        <div class="pmeta" id="historyEmpMeta"></div>
+      </div>
+    </div>
+
     <input type="month" id="historyMonthInput" style="width:100%;padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:16px;margin-bottom:14px" />
-    <div id="historyLemburInfo" class="hint" style="margin-bottom:10px"></div>
+
+    <div class="stat-row" id="statRow" style="display:none">
+      <div class="stat-box"><div class="snum" id="statHadir">0</div><div class="slbl">Hari Hadir</div></div>
+      <div class="stat-box"><div class="snum" id="statTerlambat">0</div><div class="slbl">Terlambat</div></div>
+      <div class="stat-box"><div class="snum" id="statLembur">0</div><div class="slbl">Lembur (jam)</div></div>
+    </div>
+
+    <div class="today-card" id="todayCard" style="display:none">
+      <div class="tc-label" id="todayDateLabel"></div>
+      <div class="today-row">
+        <div class="today-box in"><div class="tb-lbl">Check In</div><div class="tb-time" id="todayMasuk">—</div></div>
+        <div class="today-box out"><div class="tb-lbl">Check Out</div><div class="tb-time" id="todayKeluar">—</div></div>
+      </div>
+    </div>
+
+    <div class="muted" style="margin-bottom:6px">Riwayat Harian</div>
     <div id="historyList"></div>
     <div class="hint" id="historyEmpty"></div>
     <button class="btn btn-secondary" id="tutupRiwayat" style="margin-top:10px">Tutup</button>
@@ -126,6 +172,8 @@ function showStatus(el, msg, cls) {
   el.className = 'status ' + cls;
 }
 
+let currentProfile = null;
+
 document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
   const phone = phoneInput.value.trim();
   if (!phone) return showStatus(phoneStatus, 'Nomor telepon wajib diisi', 'err');
@@ -138,6 +186,7 @@ document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) return showStatus(phoneStatus, data.error || 'Nomor tidak ditemukan', 'err');
     currentPhone = phone;
+    currentProfile = data;
     empName.textContent = data.name;
     phoneCard.style.display = 'none';
     actionCard.style.display = 'block';
@@ -159,10 +208,8 @@ const historyCard = document.getElementById('historyCard');
 const historyMonthInput = document.getElementById('historyMonthInput');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
-const historyLemburInfo = document.getElementById('historyLemburInfo');
 
 document.getElementById('btnRiwayat').addEventListener('click', () => {
-  document.getElementById('historyEmpName').textContent = empName.textContent;
   historyMonthInput.value = new Date().toISOString().slice(0, 7);
   actionCard.style.display = 'none';
   historyCard.style.display = 'block';
@@ -176,35 +223,74 @@ document.getElementById('tutupRiwayat').addEventListener('click', () => {
 
 historyMonthInput.addEventListener('change', loadHistory);
 
+function fmtTerlambat(jam, menit) {
+  if (!jam && !menit) return '0';
+  return (jam > 0 ? jam + 'j ' : '') + menit + 'm';
+}
+
 async function loadHistory() {
   historyList.innerHTML = '';
   historyEmpty.textContent = 'Memuat...';
-  historyLemburInfo.textContent = '';
+  document.getElementById('statRow').style.display = 'none';
+  document.getElementById('todayCard').style.display = 'none';
   try {
     const month = historyMonthInput.value;
     const res = await fetch(`/api/my-records?phone=${encodeURIComponent(currentPhone)}&month=${month}`);
     const data = await res.json();
     if (!res.ok) { historyEmpty.textContent = data.error || 'Gagal memuat riwayat'; return; }
 
-    if (data.totalLemburJam > 0) {
-      historyLemburInfo.textContent = `Total lembur bulan ini: ${data.totalLemburJam} jam`;
+    // Profil
+    document.getElementById('historyEmpName').textContent = data.name;
+    document.getElementById('historyEmpMeta').textContent = [data.position, data.idNumber ? 'ID: ' + data.idNumber : ''].filter(Boolean).join(' • ');
+    const avatarEl = document.getElementById('historyAvatar');
+    if (data.photoUrl) { avatarEl.src = data.photoUrl; avatarEl.style.visibility = 'visible'; }
+    else { avatarEl.style.visibility = 'hidden'; }
+
+    // Ringkasan bulan ini
+    const statRow = document.getElementById('statRow');
+    statRow.style.display = 'flex';
+    document.getElementById('statHadir').textContent = data.summary.hariHadir;
+    document.getElementById('statTerlambat').textContent = fmtTerlambat(data.summary.terlambatJam, data.summary.terlambatMenit);
+    document.getElementById('statLembur').textContent = data.totalLemburJam;
+
+    // Hari ini (hanya tampil kalau bulan yang dipilih adalah bulan berjalan)
+    const isCurrentMonth = month === new Date().toISOString().slice(0, 7);
+    if (isCurrentMonth) {
+      const todayCard = document.getElementById('todayCard');
+      todayCard.style.display = 'block';
+      document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+      document.getElementById('todayMasuk').textContent = data.today.masuk ? data.today.masuk + ' WIB' : '—';
+      document.getElementById('todayKeluar').textContent = data.today.keluar ? data.today.keluar + ' WIB' : '—';
     }
+
     if (!data.records || data.records.length === 0) {
       historyEmpty.textContent = 'Belum ada riwayat absen di bulan ini.';
       return;
     }
     historyEmpty.textContent = '';
+
+    // Kelompokkan per tanggal supaya Check In & Check Out tampil dalam satu kartu.
+    const byDate = {};
+    const order = [];
     data.records.forEach((r) => {
-      const row = document.createElement('div');
-      row.className = 'hist-row';
-      row.innerHTML = `
-        <div class="hist-left">
-          <span class="hist-date">${r.dateKey}</span>
-          <span class="hist-type">${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB${r.shift ? ' • ' + r.shift : ''} • ${r.nearestLocation || ''}</span>
-        </div>
-        <span class="hist-badge ${r.withinRadius ? 'ok' : 'bad'}">${r.withinRadius ? 'Valid' : r.distanceMeters + 'm'}</span>
+      if (!byDate[r.dateKey]) { byDate[r.dateKey] = { masuk: null, keluar: null }; order.push(r.dateKey); }
+      byDate[r.dateKey][r.type] = r;
+    });
+
+    order.forEach((dateKey) => {
+      const d = byDate[dateKey];
+      const ref = d.masuk || d.keluar;
+      const anyInvalid = (d.masuk && !d.masuk.withinRadius) || (d.keluar && !d.keluar.withinRadius);
+      const card = document.createElement('div');
+      card.className = 'day-card';
+      const dateLabel = new Date(dateKey + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+      card.innerHTML = `
+        <div class="dc-date">${dateLabel}</div>
+        <div class="dc-row"><span class="dc-lbl">Check In</span><span class="dc-time">${d.masuk ? d.masuk.timeHHMM + ' WIB' : '—'}</span></div>
+        <div class="dc-row"><span class="dc-lbl">Check Out</span><span class="dc-time">${d.keluar ? d.keluar.timeHHMM + ' WIB' : '—'}</span></div>
+        <div class="dc-meta">${ref.shift ? ref.shift + ' • ' : ''}${ref.nearestLocation || ''}${anyInvalid ? ' • <span style="color:#c5221f">di luar radius</span>' : ''}</div>
       `;
-      historyList.appendChild(row);
+      historyList.appendChild(card);
     });
   } catch (e) {
     historyEmpty.textContent = 'Gagal memuat riwayat: ' + e.message;
@@ -212,13 +298,31 @@ async function loadHistory() {
 }
 
 function getLocation() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error('Perangkat tidak mendukung GPS.'));
+  if (!navigator.geolocation) {
+    return Promise.reject(new Error('Perangkat tidak mendukung GPS.'));
+  }
+  // Coba dulu dengan GPS akurasi tinggi (lebih presisi, tapi bisa lambat di dalam ruangan).
+  const tryHighAccuracy = new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve(pos.coords),
-      (err) => reject(new Error('Gagal mengambil lokasi: ' + err.message + '. Pastikan izin lokasi aktif.')),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      (err) => reject(err),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
+  });
+
+  return tryHighAccuracy.catch((err) => {
+    // Kalau gagal karena timeout atau sinyal GPS lemah, coba lagi dengan akurasi lebih
+    // rendah (WiFi/jaringan) yang biasanya lebih cepat didapat di dalam toko/ruangan.
+    if (err && err.code === 3 /* TIMEOUT */) {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(pos.coords),
+          (err2) => reject(new Error('Gagal mengambil lokasi: ' + err2.message + '. Pastikan izin lokasi aktif dan coba berdiri lebih dekat ke pintu/jendela.')),
+          { enableHighAccuracy: false, timeout: 20000, maximumAge: 5000 }
+        );
+      });
+    }
+    throw new Error('Gagal mengambil lokasi: ' + err.message + '. Pastikan izin lokasi aktif.');
   });
 }
 
