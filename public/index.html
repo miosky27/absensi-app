@@ -36,6 +36,12 @@
   .muted { color: #888; font-size: 12px; }
   .name-tag { font-weight: 700; color: #1a73e8; }
   a.admin-link { display: block; text-align: center; margin-top: 10px; font-size: 13px; color: #888; }
+  .shift-option {
+    width: 100%; text-align: left; padding: 14px; border: 1.5px solid #ddd; border-radius: 10px;
+    background: #fff; margin-bottom: 10px; cursor: pointer; font-size: 15px;
+  }
+  .shift-option:active { background: #e8f0fe; border-color: #1a73e8; }
+  .shift-option .shift-time { display:block; font-size: 13px; color: #666; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -65,6 +71,13 @@
     <button class="btn btn-secondary" id="gantiNomor">Ganti Nomor</button>
   </div>
 
+  <div class="card" id="shiftCard" style="display:none">
+    <div class="sub">Lokasi terdeteksi: <span class="name-tag" id="shiftLocationName"></span></div>
+    <label>Pilih Shift Anda Hari Ini</label>
+    <div id="shiftOptions"></div>
+    <button class="btn btn-secondary" id="batalShift">Batal</button>
+  </div>
+
   <div class="muted" style="text-align:center">
     Pastikan izin <b>Lokasi</b> dan <b>Kamera</b> diaktifkan di browser Anda.
   </div>
@@ -74,15 +87,21 @@
 <script>
 const phoneCard = document.getElementById('phoneCard');
 const actionCard = document.getElementById('actionCard');
+const shiftCard = document.getElementById('shiftCard');
 const phoneInput = document.getElementById('phoneInput');
 const phoneStatus = document.getElementById('phoneStatus');
 const empName = document.getElementById('empName');
 const photoInput = document.getElementById('photoInput');
 const preview = document.getElementById('preview');
 const actionStatus = document.getElementById('actionStatus');
+const shiftLocationName = document.getElementById('shiftLocationName');
+const shiftOptions = document.getElementById('shiftOptions');
 
 let currentPhone = '';
 let currentType = null;
+let currentShift = null;
+let currentLat = null;
+let currentLng = null;
 
 function showStatus(el, msg, cls) {
   el.textContent = msg;
@@ -117,13 +136,77 @@ document.getElementById('gantiNomor').addEventListener('click', () => {
   actionStatus.style.display = 'none';
 });
 
-function startAbsen(type) {
+function getLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('Perangkat tidak mendukung GPS.'));
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos.coords),
+      (err) => reject(new Error('Gagal mengambil lokasi: ' + err.message + '. Pastikan izin lokasi aktif.')),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
+}
+
+async function startAbsen(type) {
   currentType = type;
-  photoInput.value = '';
-  photoInput.click();
+  currentShift = null;
+
+  if (type === 'keluar') {
+    // Absen keluar tidak perlu pilih shift, langsung ambil foto.
+    photoInput.value = '';
+    photoInput.click();
+    return;
+  }
+
+  // Absen masuk: ambil lokasi dulu untuk tahu shift apa saja yang tersedia di lokasi ini.
+  showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
+  try {
+    const coords = await getLocation();
+    currentLat = coords.latitude;
+    currentLng = coords.longitude;
+    const res = await fetch('/api/nearest-location', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: currentLat, lng: currentLng }),
+    });
+    const data = await res.json();
+    if (!res.ok) return showStatus(actionStatus, data.error || 'Gagal memuat lokasi', 'err');
+    if (!data.shifts || data.shifts.length === 0) {
+      return showStatus(actionStatus, `Lokasi terdekat (${data.name}) belum punya shift yang diatur. Hubungi admin.`, 'err');
+    }
+    showShiftPicker(data.name, data.shifts);
+    actionStatus.style.display = 'none';
+  } catch (e) {
+    showStatus(actionStatus, e.message, 'err');
+  }
 }
 document.getElementById('btnMasuk').addEventListener('click', () => startAbsen('masuk'));
 document.getElementById('btnKeluar').addEventListener('click', () => startAbsen('keluar'));
+
+function showShiftPicker(locationName, shifts) {
+  shiftLocationName.textContent = locationName;
+  shiftOptions.innerHTML = '';
+  shifts.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'shift-option';
+    btn.innerHTML = `${s.name}<span class="shift-time">${s.startTime} – ${s.endTime}</span>`;
+    btn.addEventListener('click', () => {
+      currentShift = s.name;
+      shiftCard.style.display = 'none';
+      actionCard.style.display = 'block';
+      photoInput.value = '';
+      photoInput.click();
+    });
+    shiftOptions.appendChild(btn);
+  });
+  actionCard.style.display = 'none';
+  shiftCard.style.display = 'block';
+}
+
+document.getElementById('batalShift').addEventListener('click', () => {
+  shiftCard.style.display = 'none';
+  actionCard.style.display = 'block';
+});
 
 photoInput.addEventListener('change', async () => {
   const file = photoInput.files[0];
@@ -131,42 +214,43 @@ photoInput.addEventListener('change', async () => {
   preview.src = URL.createObjectURL(file);
   preview.style.display = 'block';
 
-  showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
-  if (!navigator.geolocation) {
-    return showStatus(actionStatus, 'Perangkat tidak mendukung GPS.', 'err');
+  try {
+    // Untuk absen masuk, lokasi sudah diambil sebelumnya (saat pilih shift).
+    // Untuk absen keluar, ambil lokasi sekarang.
+    if (currentType === 'keluar') {
+      showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
+      const coords = await getLocation();
+      currentLat = coords.latitude;
+      currentLng = coords.longitude;
+    }
+
+    showStatus(actionStatus, 'Mengirim data absen...', 'warn');
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const res = await fetch('/api/checkin', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: currentPhone,
+            type: currentType,
+            lat: currentLat,
+            lng: currentLng,
+            shift: currentShift,
+            photoBase64: reader.result,
+            deviceTime: new Date().toISOString(),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) return showStatus(actionStatus, data.error || 'Gagal mengirim absen', 'err');
+        showStatus(actionStatus, data.message, data.withinRadius ? 'ok' : 'warn');
+      } catch (e) {
+        showStatus(actionStatus, 'Gagal mengirim: ' + e.message, 'err');
+      }
+    };
+    reader.readAsDataURL(file);
+  } catch (e) {
+    showStatus(actionStatus, e.message, 'err');
   }
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const { latitude, longitude } = pos.coords;
-      showStatus(actionStatus, 'Mengirim data absen...', 'warn');
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const res = await fetch('/api/checkin', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phone: currentPhone,
-              type: currentType,
-              lat: latitude,
-              lng: longitude,
-              photoBase64: reader.result,
-              deviceTime: new Date().toISOString(),
-            }),
-          });
-          const data = await res.json();
-          if (!res.ok) return showStatus(actionStatus, data.error || 'Gagal mengirim absen', 'err');
-          showStatus(actionStatus, data.message, data.withinRadius ? 'ok' : 'warn');
-        } catch (e) {
-          showStatus(actionStatus, 'Gagal mengirim: ' + e.message, 'err');
-        }
-      };
-      reader.readAsDataURL(file);
-    },
-    (err) => {
-      showStatus(actionStatus, 'Gagal mengambil lokasi: ' + err.message + '. Pastikan izin lokasi aktif.', 'err');
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-  );
 });
 </script>
 </body>

@@ -13,7 +13,6 @@ const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
-const SCHEDULES_FILE = path.join(DATA_DIR, 'schedules.json');
 
 const PORT = process.env.PORT || 3000;
 
@@ -22,13 +21,26 @@ function ensureFile(file, defaultValue) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(defaultValue, null, 2));
 }
 ensureFile(RECORDS_FILE, []);
-// Jadwal kerja rolling per karyawan per tanggal: [{ employee, date, startTime, endTime }]
-// Kalau karyawan tidak punya entri untuk tanggal tersebut, dipakai workStartTime global sebagai default.
-ensureFile(SCHEDULES_FILE, []);
 ensureFile(CONFIG_FILE, {
-  // Beberapa lokasi kantor/cabang. Absen valid jika berada dalam radius SALAH SATU lokasi.
+  // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
+  // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
   locations: [
-    { name: "Kantor Pusat", lat: -6.200000, lng: 106.816666, radiusMeters: 10 },
+    {
+      name: "Yogya Jatibarang",
+      lat: -6.200000, lng: 108.316666, radiusMeters: 10,
+      shifts: [
+        { name: "Shift 1", startTime: "08:30", endTime: "16:30" },
+        { name: "Shift 2", startTime: "12:30", endTime: "20:30" },
+        { name: "Full Day", startTime: "08:30", endTime: "20:30" },
+      ],
+    },
+    {
+      name: "Yomart Karangampel",
+      lat: -6.400000, lng: 108.416666, radiusMeters: 10,
+      shifts: [
+        { name: "Shift 1", startTime: "07:30", endTime: "15:30" },
+      ],
+    },
   ],
   // Daftar karyawan: login memakai nomor telepon
   employees: [
@@ -36,7 +48,7 @@ ensureFile(CONFIG_FILE, {
     { phone: "081234567891", name: "Contoh Karyawan 2" },
   ],
   adminPassword: process.env.ADMIN_PASSWORD || "admin123",
-  workStartTime: "08:00", // untuk hitung terlambat
+  workStartTime: "08:00", // fallback kalau record lama tidak punya data shift
   reportEmail: "f.yazid27@gmail.com",
 });
 
@@ -47,34 +59,31 @@ function writeJSON(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-// Migrasi otomatis dari skema lama (1 lokasi: officeLat/officeLng/radiusMeters)
-// ke skema baru (banyak lokasi), supaya config.json yang sudah ada tidak rusak.
+// Migrasi otomatis dari skema lama ke skema baru, supaya config.json yang
+// sudah ada (dari deploy sebelumnya) tidak rusak.
 function migrateConfig(config) {
   if (!config.locations && typeof config.officeLat === 'number') {
     config.locations = [
-      { name: 'Kantor', lat: config.officeLat, lng: config.officeLng, radiusMeters: config.radiusMeters || 10 },
+      { name: 'Kantor', lat: config.officeLat, lng: config.officeLng, radiusMeters: config.radiusMeters || 10, shifts: [] },
     ];
     delete config.officeLat;
     delete config.officeLng;
     delete config.radiusMeters;
-    writeJSON(CONFIG_FILE, config);
   }
   if (!Array.isArray(config.locations)) config.locations = [];
+  // Lokasi lama (sebelum fitur shift) belum punya field shifts.
+  let changed = false;
+  for (const loc of config.locations) {
+    if (!Array.isArray(loc.shifts)) { loc.shifts = []; changed = true; }
+  }
+  if (changed || typeof config.officeLat === 'number') writeJSON(CONFIG_FILE, config);
   return config;
 }
 
-// ---------- Jadwal kerja rolling ----------
-function scheduleMap(schedules) {
-  const map = {};
-  for (const s of schedules) map[s.employee + '|' + s.date] = s;
-  return map;
-}
-
-// Jam masuk yang berlaku untuk karyawan pada tanggal tertentu: pakai jadwal
-// rolling kalau ada (dari map hasil scheduleMap()), kalau tidak pakai jam masuk default (global).
-function effectiveStartTime(employee, dateKey, config, schedMap) {
-  const sched = schedMap[employee + '|' + dateKey];
-  return (sched && sched.startTime) || config.workStartTime;
+// Cari shift berdasarkan nama di dalam sebuah lokasi.
+function findShift(location, shiftName) {
+  if (!location || !location.shifts) return null;
+  return location.shifts.find((s) => s.name === shiftName) || null;
 }
 
 // ---------- Lembur ----------
@@ -119,7 +128,13 @@ function nearestLocation(lat, lng, locations) {
   for (const loc of locations) {
     const d = distanceMeters(lat, lng, loc.lat, loc.lng);
     if (!best || d < best.distanceMeters) {
-      best = { name: loc.name, distanceMeters: d, radiusMeters: loc.radiusMeters, withinRadius: d <= loc.radiusMeters };
+      best = {
+        name: loc.name,
+        distanceMeters: d,
+        radiusMeters: loc.radiusMeters,
+        withinRadius: d <= loc.radiusMeters,
+        shifts: loc.shifts || [],
+      };
     }
   }
   return best;
@@ -270,6 +285,25 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { name: emp.name });
     }
 
+    // ---- Lokasi terdekat + daftar shift lokasi itu (dipakai saat absen masuk) ----
+    if (pathName === '/api/nearest-location' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const { lat, lng } = body;
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        return sendJSON(res, 400, { error: 'Lokasi tidak valid' });
+      }
+      if (config.locations.length === 0) {
+        return sendJSON(res, 400, { error: 'Belum ada lokasi kantor yang diatur. Hubungi admin.' });
+      }
+      const nearest = nearestLocation(lat, lng, config.locations);
+      return sendJSON(res, 200, {
+        name: nearest.name,
+        distanceMeters: Math.round(nearest.distanceMeters),
+        withinRadius: nearest.withinRadius,
+        shifts: nearest.shifts,
+      });
+    }
+
     // ---- Login admin ----
     if (pathName === '/api/login' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
@@ -283,7 +317,7 @@ const server = http.createServer(async (req, res) => {
     if (pathName === '/api/checkin' && req.method === 'POST') {
       const raw = await readBody(req);
       const body = JSON.parse(raw.toString('utf8'));
-      const { phone, type, lat, lng, photoBase64, deviceTime } = body;
+      const { phone, type, lat, lng, photoBase64, deviceTime, shift } = body;
 
       if (!phone || !type || typeof lat !== 'number' || typeof lng !== 'number' || !photoBase64) {
         return sendJSON(res, 400, { error: 'Data tidak lengkap (nomor telepon, tipe, lokasi, foto wajib diisi)' });
@@ -298,6 +332,14 @@ const server = http.createServer(async (req, res) => {
       }
       const nearest = nearestLocation(lat, lng, config.locations);
       const withinRadius = nearest.withinRadius;
+
+      // Shift wajib dipilih saat absen masuk; dicocokkan ke daftar shift lokasi terdekat.
+      let shiftInfo = null;
+      if (type === 'masuk') {
+        if (!shift) return sendJSON(res, 400, { error: 'Pilih shift terlebih dahulu.' });
+        shiftInfo = (nearest.shifts || []).find((s) => s.name === shift) || null;
+        if (!shiftInfo) return sendJSON(res, 400, { error: 'Shift tidak dikenali untuk lokasi ini.' });
+      }
 
       const id = crypto.randomUUID();
       const serverTime = new Date().toISOString();
@@ -315,6 +357,9 @@ const server = http.createServer(async (req, res) => {
         nearestLocation: nearest.name,
         distanceMeters: Math.round(nearest.distanceMeters),
         withinRadius,
+        shift: shiftInfo ? shiftInfo.name : null,
+        shiftStart: shiftInfo ? shiftInfo.startTime : null,
+        shiftEnd: shiftInfo ? shiftInfo.endTime : null,
         photoFilename,
         serverTime,
         deviceTime: deviceTime || null,
@@ -363,7 +408,6 @@ const server = http.createServer(async (req, res) => {
       const month = url.searchParams.get('month'); // YYYY-MM
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
       const lemburMap = computeLemburByEmployeeDate(records);
-      const schedMap = scheduleMap(readJSON(SCHEDULES_FILE));
 
       const byEmployee = {};
       for (const emp of config.employees) {
@@ -377,7 +421,8 @@ const server = http.createServer(async (req, res) => {
         e.hariHadir.add(r.dateKey);
         e.totalAbsen += 1;
         if (!r.withinRadius) e.diLuarRadius += 1;
-        const startTime = effectiveStartTime(r.employee, r.dateKey, config, schedMap);
+        // Pakai jam mulai shift yang dipilih karyawan saat absen masuk (fallback ke default global untuk record lama).
+        const startTime = r.shiftStart || config.workStartTime;
         if (r.type === 'masuk' && startTime && r.timeHHMM > startTime) {
           e.terlambat += 1;
         }
@@ -413,7 +458,7 @@ const server = http.createServer(async (req, res) => {
       const lemburMap = computeLemburByEmployeeDate(records);
       const lines = records.map(
         (r) =>
-          `- ${r.employee} | ${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB | ${
+          `- ${r.employee} | ${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB${r.shift ? ` (${r.shift})` : ''} | ${
             r.withinRadius
               ? `lokasi valid (${r.nearestLocation || 'kantor'})`
               : `di luar radius ${r.nearestLocation || 'kantor'} (${r.distanceMeters} m)`
@@ -433,7 +478,6 @@ const server = http.createServer(async (req, res) => {
       const month = url.searchParams.get('month') || dateKeyJakarta(new Date().toISOString()).slice(0, 7);
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
       const lemburMap = computeLemburByEmployeeDate(records);
-      const schedMap = scheduleMap(readJSON(SCHEDULES_FILE));
 
       const byEmployee = {};
       for (const emp of config.employees) {
@@ -447,7 +491,7 @@ const server = http.createServer(async (req, res) => {
         e.hariHadir.add(r.dateKey);
         e.totalAbsen += 1;
         if (!r.withinRadius) e.diLuarRadius += 1;
-        const startTime = effectiveStartTime(r.employee, r.dateKey, config, schedMap);
+        const startTime = r.shiftStart || config.workStartTime;
         if (r.type === 'masuk' && startTime && r.timeHHMM > startTime) {
           e.terlambat += 1;
         }
@@ -472,28 +516,6 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { month, text, summary });
     }
 
-    // ---- Jadwal kerja rolling (per karyawan, per tanggal) ----
-    if (pathName === '/api/schedules/day' && req.method === 'GET') {
-      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
-      const date = url.searchParams.get('date');
-      const schedules = readJSON(SCHEDULES_FILE).filter((s) => s.date === date);
-      return sendJSON(res, 200, { date, schedules });
-    }
-
-    if (pathName === '/api/schedules/day' && req.method === 'POST') {
-      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
-      const body = JSON.parse((await readBody(req)).toString('utf8'));
-      const { date, entries } = body; // entries: [{ employee, startTime, endTime }]
-      if (!date || !Array.isArray(entries)) return sendJSON(res, 400, { error: 'Data tidak lengkap' });
-
-      let schedules = readJSON(SCHEDULES_FILE).filter((s) => s.date !== date);
-      for (const e of entries) {
-        if (!e.employee || !e.startTime) continue; // kosongkan = pakai default global
-        schedules.push({ employee: e.employee, date, startTime: e.startTime, endTime: e.endTime || null });
-      }
-      writeJSON(SCHEDULES_FILE, schedules);
-      return sendJSON(res, 200, { ok: true });
-    }
 
     if (pathName === '/api/config' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
