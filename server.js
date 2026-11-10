@@ -1324,8 +1324,11 @@ const server = http.createServer(async (req, res) => {
 
     if (pathName === '/api/summary' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
-      const month = url.searchParams.get('month'); // YYYY-MM
-      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
+      // Task #58: rekap absensi dgn rentang tanggal bebas (sebelumnya cuma per bulan kalender).
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from & to (YYYY-MM-DD) wajib diisi' });
+      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
       const lemburMap = computeLemburByEmployeeDate(records);
 
       const byEmployee = {};
@@ -1359,7 +1362,7 @@ const server = http.createServer(async (req, res) => {
         terlambat: e.terlambat,
         lemburJam: Math.round((e.lemburMenit / 60) * 10) / 10,
       }));
-      return sendJSON(res, 200, { month, summary, workStartTime: config.workStartTime });
+      return sendJSON(res, 200, { from, to, summary, workStartTime: config.workStartTime });
     }
 
     // ---- Export rekap absensi ke CSV untuk rentang tanggal bebas yang dipilih admin ----
@@ -2180,21 +2183,38 @@ const server = http.createServer(async (req, res) => {
     if (pathName === '/api/dashboard-summary' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const todayKey = dateKeyJakarta(new Date().toISOString());
-      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey === todayKey)
-        .sort((a, b) => (a.timeHHMM < b.timeHHMM ? 1 : -1));
-      const kasbonToday = readJSON(KASBON_FILE).filter((k) => k.tanggal === todayKey)
-        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-      const karyawanMasuk = new Set(records.filter((r) => r.type === 'masuk').map((r) => r.employee)).size;
+      const recordsToday = readJSON(RECORDS_FILE).filter((r) => r.dateKey === todayKey);
+      const karyawanMasuk = new Set(recordsToday.filter((r) => r.type === 'masuk').map((r) => r.employee)).size;
       const leavesToday = readJSON(LEAVES_FILE).filter((l) => l.status === 'approved' && l.startDate <= todayKey && todayKey <= l.endDate);
+      const positionByName = {};
+      config.employees.forEach((e) => { positionByName[e.name] = e.position || ''; });
+
+      // "Terbaru" (Task #54): bukan cuma hari ini, tapi 15/10 data PALING BARU
+      // secara keseluruhan (diurutkan tanggal+jam / createdAt terbaru duluan).
+      const recentRecords = readJSON(RECORDS_FILE)
+        .sort((a, b) => (a.dateKey + a.timeHHMM < b.dateKey + b.timeHHMM ? 1 : -1))
+        .slice(0, 15)
+        .map((r) => ({
+          employee: r.employee, position: positionByName[r.employee] || '', type: r.type,
+          timeHHMM: r.timeHHMM, nearestLocation: r.nearestLocation,
+        }));
+      const kasbonTerbaru = readJSON(KASBON_FILE)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+        .slice(0, 10)
+        .map((k) => ({ employee: k.employee, jenis: k.jenis, jumlah: k.jumlah, status: k.status }));
+      const leaveTerbaru = readJSON(LEAVES_FILE)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+        .slice(0, 10)
+        .map((l) => ({ employee: l.employee, type: l.type, startDate: l.startDate, endDate: l.endDate, status: l.status }));
+
       return sendJSON(res, 200, {
         date: todayKey,
         totalKaryawan: config.employees.filter((e) => e.status !== 'nonaktif').length,
         karyawanMasuk,
         karyawanCuti: leavesToday.length,
-        recentRecords: records.slice(0, 15).map((r) => ({
-          employee: r.employee, type: r.type, timeHHMM: r.timeHHMM, nearestLocation: r.nearestLocation,
-        })),
-        kasbonToday: kasbonToday.map((k) => ({ employee: k.employee, jenis: k.jenis, jumlah: k.jumlah, status: k.status })),
+        recentRecords,
+        kasbonTerbaru,
+        leaveTerbaru,
       });
     }
 
