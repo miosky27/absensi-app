@@ -493,7 +493,16 @@ function computePayrollSummary(records, config, from, to) {
     // diambil dulu dari hari2 absen yang PALING AWAL secara kronologis di antara hari2 itu.
     const preJoinAbsentDates = tanggalMasuk ? absentDates.filter((dk) => dk < tanggalMasuk) : [];
     const postJoinAbsentDates = tanggalMasuk ? absentDates.filter((dk) => dk >= tanggalMasuk) : absentDates;
-    const jatah = config.jatahOffPerPeriode || 0;
+    // Kalau karyawan baru mulai kerja DI TENGAH periode ini, jatah off-nya diprorata dari
+    // jumlah hari sejak dia masuk kerja sampai akhir periode -- aturannya 1 kali jatah off
+    // per 7 hari kerja (6 hari kerja + 1 hari off), bukan jatah penuh satu periode utuh.
+    // Contoh: periode 30 hari, karyawan baru masuk kerja di pertengahan (15 hari sisa periode
+    // sejak dia masuk kerja) -> jatahnya cuma 2 (15 hari / 7 = 2,14, dibulatkan ke bawah).
+    // Kalau dia sudah bekerja sejak sebelum/sejak awal periode ini, pakai jatah penuh seperti biasa.
+    const joinedMidPeriode = !!(tanggalMasuk && tanggalMasuk > from && tanggalMasuk <= to);
+    const jatah = joinedMidPeriode
+      ? Math.floor(countDaysInclusive(tanggalMasuk, to) / 7)
+      : (config.jatahOffPerPeriode || 0);
     const postJoinOverQuota = Math.max(0, postJoinAbsentDates.length - jatah);
     const chargedPostJoinDates = postJoinOverQuota > 0 ? postJoinAbsentDates.slice(postJoinAbsentDates.length - postJoinOverQuota) : [];
     const chargedAbsentDates = [...preJoinAbsentDates, ...chargedPostJoinDates];
