@@ -209,7 +209,7 @@
     .slip-line .sl-lbl { white-space:nowrap; }
   }
 
-  /* ---- Ijin/Cuti & Kasbon ---- */
+  /* ---- Izin/Cuti & Kasbon ---- */
   select.form-select { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; background:#fff; }
   textarea.form-textarea { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; font-family:inherit; resize:vertical; min-height:70px; }
   .list-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
@@ -270,7 +270,7 @@
     <div class="stat-grid-2x2">
       <div class="stat-tile kehadiran"><div class="st-num" id="statHadir">0</div><div class="st-lbl">Kehadiran</div></div>
       <div class="stat-tile tidakhadir"><div class="st-num" id="statTidakHadir">0</div><div class="st-lbl">Tidak Hadir</div></div>
-      <div class="stat-tile ijin"><div class="st-num" id="statIjin">0</div><div class="st-lbl">Ijin</div></div>
+      <div class="stat-tile ijin"><div class="st-num" id="statIjin">0</div><div class="st-lbl">Izin</div></div>
       <div class="stat-tile lembur"><div class="st-num" id="statLembur">0</div><div class="st-lbl">Lembur (jam)</div></div>
     </div>
 
@@ -306,7 +306,7 @@
       <div class="pg-meta" id="profilMeta"></div>
     </div>
     <div class="card" style="padding:4px 16px">
-      <button type="button" class="profil-list-item" id="bukaIjinCuti"><span>Ijin / Cuti</span><span class="pli-arrow">&#8250;</span></button>
+      <button type="button" class="profil-list-item" id="bukaIjinCuti"><span>Izin / Cuti</span><span class="pli-arrow">&#8250;</span></button>
       <button type="button" class="profil-list-item danger" id="gantiNomor"><span>Keluar</span><span class="pli-arrow">&#8250;</span></button>
     </div>
   </div>
@@ -327,7 +327,7 @@
 
   <div class="card" id="leaveCard" style="display:none">
     <div class="slip-head">
-      <div class="sh-title">Ijin / Cuti</div>
+      <div class="sh-title">Izin / Cuti</div>
       <button class="btn btn-secondary" id="tutupLeave" style="width:auto; padding:8px 14px; margin:0; font-size:13px">Tutup</button>
     </div>
     <label>Jenis</label>
@@ -412,7 +412,7 @@ let currentShift = null;
 let currentLat = null;
 let currentLng = null;
 let currentProfile = null;
-let lastOpenedSubScreen = null; // untuk tombol "Tutup" pada Slip Gaji/Ijin/Kasbon kembali ke page asal
+let lastOpenedSubScreen = null; // untuk tombol "Tutup" pada Slip Gaji/Izin/Kasbon kembali ke page asal
 
 function showStatus(el, msg, cls) {
   el.textContent = msg;
@@ -971,7 +971,7 @@ photoInput.addEventListener('change', async () => {
   }
 });
 
-// ---- Ijin/Cuti ----
+// ---- Izin/Cuti ----
 const leaveTypeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin Lainnya' };
 const leaveStatusLabel = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
 

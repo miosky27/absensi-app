@@ -809,7 +809,7 @@ function addNotification(phone, message, type) {
   writeJSON(NOTIFICATIONS_FILE, notifications);
 }
 
-// Buat notifikasi baru untuk admin (dipakai saat karyawan ajukan cuti/ijin atau kasbon baru).
+// Buat notifikasi baru untuk admin (dipakai saat karyawan ajukan cuti/izin atau kasbon baru).
 function addAdminNotification(message, type, refId) {
   const notifications = readJSON(ADMIN_NOTIFICATIONS_FILE);
   notifications.push({
@@ -1006,7 +1006,7 @@ const server = http.createServer(async (req, res) => {
       const todayLemburMasuk = todayRecords.find((r) => r.type === 'lembur_masuk');
       const todayLemburKeluar = todayRecords.find((r) => r.type === 'lembur_keluar');
 
-      // Ijin/Cuti disetujui yang jatuh di bulan ini (untuk kartu ringkasan "Ijin").
+      // Izin/Cuti disetujui yang jatuh di bulan ini (untuk kartu ringkasan "Izin").
       const [sy, sm] = month.split('-').map(Number);
       const monthStart = `${month}-01`;
       const monthEndDate = new Date(sy, sm, 0).getDate();
@@ -1026,7 +1026,7 @@ const server = http.createServer(async (req, res) => {
       });
       const ijinHari = ijinDateSet.size;
 
-      // Tidak Hadir: hari berjalan bulan ini (s.d. hari ini kalau bulan sekarang) dikurangi hadir & ijin.
+      // Tidak Hadir: hari berjalan bulan ini (s.d. hari ini kalau bulan sekarang) dikurangi hadir & izin.
       const nowKey = dateKeyJakarta(new Date().toISOString());
       const elapsedDay = month === nowKey.slice(0, 7) ? Number(nowKey.slice(8, 10)) : monthEndDate;
       const tidakHadir = Math.max(0, elapsedDay - hariHadirSet.size - ijinHari);
@@ -1844,7 +1844,7 @@ const server = http.createServer(async (req, res) => {
       leaves.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return sendJSON(res, 200, { leaves });
     }
-    // Export rekap Ijin/Cuti ke .xlsx. Tanpa param date/status = semua data ("Semua Data" di UI).
+    // Export rekap Izin/Cuti ke .xlsx. Tanpa param date/status = semua data ("Semua Data" di UI).
     // Dengan date/status = sesuai filter yang lagi aktif ("Sesuai Filter" di UI).
     if (pathName === '/api/leaves/export' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
@@ -1861,14 +1861,14 @@ const server = http.createServer(async (req, res) => {
       const dataRows = leaves.map((l) => [
         l.employee || '', typeLabel[l.type] || l.type || '', l.startDate || '', l.endDate || '', l.reason || '', statusLabel[l.status] || l.status || '',
       ]);
-      const xlsxBuffer = buildXlsx([{ name: 'Ijin Cuti', rows: [headerRow, ...dataRows] }]);
+      const xlsxBuffer = buildXlsx([{ name: 'Izin Cuti', rows: [headerRow, ...dataRows] }]);
       res.writeHead(200, {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="ijin-cuti${date ? '-' + date : ''}${status ? '-' + status : ''}.xlsx"`,
+        'Content-Disposition': `attachment; filename="izin-cuti${date ? '-' + date : ''}${status ? '-' + status : ''}.xlsx"`,
       });
       return res.end(xlsxBuffer);
     }
-    // Admin: daftar notifikasi admin (pengajuan cuti/ijin & kasbon baru) + jumlah belum dibaca.
+    // Admin: daftar notifikasi admin (pengajuan cuti/izin & kasbon baru) + jumlah belum dibaca.
     if (pathName === '/api/admin-notifications' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const notifications = readJSON(ADMIN_NOTIFICATIONS_FILE).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
@@ -1903,7 +1903,7 @@ const server = http.createServer(async (req, res) => {
       if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
       l.status = 'approved'; l.reviewedAt = new Date().toISOString();
       writeJSON(LEAVES_FILE, leaves);
-      addNotification(l.phone, 'Pengajuan Cuti/Ijin Anda telah diterima.', 'leave_approved');
+      addNotification(l.phone, 'Pengajuan Cuti/Izin Anda telah diterima.', 'leave_approved');
       return sendJSON(res, 200, { ok: true });
     }
     if (pathName.startsWith('/api/leaves/') && pathName.endsWith('/reject') && req.method === 'POST') {
@@ -1914,7 +1914,7 @@ const server = http.createServer(async (req, res) => {
       if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
       l.status = 'rejected'; l.reviewedAt = new Date().toISOString();
       writeJSON(LEAVES_FILE, leaves);
-      addNotification(l.phone, 'Pengajuan Cuti/Ijin Anda telah ditolak.', 'leave_rejected');
+      addNotification(l.phone, 'Pengajuan Cuti/Izin Anda telah ditolak.', 'leave_rejected');
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -2003,7 +2003,7 @@ const server = http.createServer(async (req, res) => {
       }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return sendJSON(res, 200, { kasbon: result });
     }
-    // Riwayat notifikasi milik karyawan sendiri (status pengajuan cuti/ijin & kasbon).
+    // Riwayat notifikasi milik karyawan sendiri (status pengajuan cuti/izin & kasbon).
     if (pathName === '/api/my-notifications' && req.method === 'GET') {
       const phone = String(url.searchParams.get('phone') || '').trim();
       const notifications = readJSON(NOTIFICATIONS_FILE)

@@ -191,7 +191,7 @@
     <nav class="sidebar">
       <div class="side-item active" data-page="dashboard"><span class="ic">📊</span><span>Dashboard</span></div>
       <div class="side-item" data-page="pegawai"><span class="ic">👥</span><span>Karyawan</span></div>
-      <div class="side-item" data-page="ijincuti"><span class="ic">📅</span><span>Ijin/Cuti</span></div>
+      <div class="side-item" data-page="ijincuti"><span class="ic">📅</span><span>Izin/Cuti</span></div>
       <div class="side-item" data-page="gaji"><span class="ic">🧾</span><span>Gaji</span></div>
       <div class="side-item" data-page="absensi"><span class="ic">⏱️</span><span>Absensi</span></div>
       <div class="side-item" data-page="kasbon"><span class="ic">💵</span><span>Kasbon</span></div>
@@ -372,8 +372,8 @@
 
       <!-- ================= IJIN/CUTI ================= -->
       <div id="page-ijincuti" class="page" style="display:none">
-        <div class="topbar"><h2 class="page-title">Ijin / Cuti</h2></div>
-        <div class="breadcrumb">Dashboard &gt; Ijin / Cuti</div>
+        <div class="topbar"><h2 class="page-title">Izin / Cuti</h2></div>
+        <div class="breadcrumb">Dashboard &gt; Izin / Cuti</div>
         <div class="card">
           <div class="filter-row">
             <div class="field"><label>Tanggal berlaku</label><input type="date" id="leaveDateFilter" /></div>
@@ -1227,7 +1227,7 @@ async function loadDashboard() {
   document.getElementById('dashGrid').innerHTML = `
     <div class="summary-card sc-total"><div class="num">${d.totalKaryawan}</div><div class="lbl">Total Karyawan Aktif</div></div>
     <div class="summary-card sc-ontime"><div class="num">${d.karyawanMasuk}</div><div class="lbl">Sudah Absen Masuk</div></div>
-    <div class="summary-card sc-overtime"><div class="num">${d.karyawanCuti}</div><div class="lbl">Cuti/Ijin Hari Ini</div></div>
+    <div class="summary-card sc-overtime"><div class="num">${d.karyawanCuti}</div><div class="lbl">Cuti/Izin Hari Ini</div></div>
   `;
   const tbody = document.querySelector('#dashRecentTable tbody');
   tbody.innerHTML = '';
@@ -1259,7 +1259,7 @@ async function loadDashboard() {
   document.getElementById('dashLeaveEmpty').textContent = d.leaveTerbaru.length === 0 ? 'Belum ada pengajuan cuti/izin.' : '';
 }
 
-// ---- Ijin/Cuti ----
+// ---- Izin/Cuti ----
 async function loadLeaves() {
   const date = document.getElementById('leaveDateFilter').value;
   const status = document.getElementById('leaveStatusFilter').value;
@@ -1307,7 +1307,7 @@ document.getElementById('leaveExportBtn').addEventListener('click', async () => 
     const blob = await res.blob();
     const disposition = res.headers.get('Content-Disposition') || '';
     const match = disposition.match(/filename="([^"]+)"/);
-    const filename = match ? match[1] : 'ijin-cuti.xlsx';
+    const filename = match ? match[1] : 'izin-cuti.xlsx';
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename;
