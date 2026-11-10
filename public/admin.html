@@ -187,7 +187,7 @@
       <div class="side-item active" data-page="dashboard"><span class="ic">📊</span><span>Dashboard</span></div>
       <div class="side-item" data-page="pegawai"><span class="ic">👥</span><span>Karyawan</span></div>
       <div class="side-item" data-page="ijincuti"><span class="ic">📅</span><span>Ijin/Cuti</span></div>
-      <div class="side-item" data-page="slipgaji"><span class="ic">🧾</span><span>Slip Gaji</span></div>
+      <div class="side-item" data-page="gaji"><span class="ic">🧾</span><span>Gaji</span></div>
       <div class="side-item" data-page="absensi"><span class="ic">⏱️</span><span>Absensi</span></div>
       <div class="side-item" data-page="kasbon"><span class="ic">💵</span><span>Kasbon</span></div>
       <div class="side-item" data-page="setting"><span class="ic">⚙️</span><span>Pengaturan</span></div>
@@ -277,6 +277,10 @@
             <div class="field"><label>Status Karyawan</label>
               <select id="empFStatus"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select>
             </div>
+            <div class="field" style="display:flex;align-items:center;gap:8px;grid-column:1 / -1">
+              <input type="checkbox" id="empFDapatUangMakan" style="width:auto" />
+              <label for="empFDapatUangMakan" style="margin:0">Dapat Uang Makan</label>
+            </div>
           </div>
           <div style="padding:16px 22px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
             <button class="btn danger small" type="button" id="empModalDeleteBtn">Hapus Karyawan</button>
@@ -326,11 +330,16 @@
         </div>
       </div>
 
-      <!-- ================= SLIP GAJI (admin) ================= -->
-      <div id="page-slipgaji" class="page" style="display:none">
-        <div class="topbar"><h2 class="page-title">Slip Gaji</h2></div>
-        <div class="breadcrumb">Dashboard &gt; Slip Gaji</div>
-        <div class="card">
+      <!-- ================= GAJI (Slip Gaji + Pengaturan Gaji) ================= -->
+      <div id="page-gaji" class="page" style="display:none">
+        <div class="topbar"><h2 class="page-title">Gaji</h2></div>
+        <div class="breadcrumb">Dashboard &gt; Gaji</div>
+        <div class="tabs">
+          <div class="tab active" data-subtab="slip">Slip Gaji</div>
+          <div class="tab" data-subtab="pengaturangaji">Pengaturan Gaji</div>
+        </div>
+
+        <div id="sub-slip" class="card">
           <div class="section-title" style="margin-top:0">Periode Gajian</div>
           <div class="hint">Default: periode gajian 26 bulan lalu s.d. 25 bulan ini. Ubah tanggal kalau perlu lihat periode lain.</div>
           <div class="loc-row" style="margin-top:8px">
@@ -356,6 +365,27 @@
           <div class="hint" style="margin-top:10px">Kerajinan (bonus 10%) hangus jika OFF melebihi jatah atau terlambat lebih dari batas. Potongan = OFF berlebih + terlambat + pulang cepat. Kasbon = cicilan/pelunasan kasbon dalam periode ini.</div>
         </div>
         <div class="card" id="slipDetailCard" style="display:none"></div>
+
+        <div id="sub-pengaturangaji" class="card" style="display:none">
+          <div class="section-title" style="margin-top:0">Pengaturan Gaji</div>
+          <div class="hint">Gaji pokok & upah lembur/jam diatur per karyawan di menu Karyawan. Pengaturan di bawah ini berlaku untuk semua karyawan.</div>
+          <div class="loc-row" style="margin-top:8px">
+            <div class="field" style="flex:1;margin-bottom:0"><label>Uang Makan / Hari Masuk (Rp)</label><input type="number" id="cfgUangMakan" /></div>
+            <div class="field" style="flex:1;margin-bottom:0"><label>Uang Transport / Hari Masuk (Rp)</label><input type="number" id="cfgUangTransport" /></div>
+          </div>
+          <div class="loc-row" style="margin-top:8px">
+            <div class="field" style="flex:1;margin-bottom:0"><label>Jatah OFF / Periode (hari)</label><input type="number" id="cfgJatahOff" /></div>
+            <div class="field" style="flex:1;margin-bottom:0"><label>Pengali Potongan OFF (× gaji harian)</label><input type="number" id="cfgPengaliOff" /></div>
+          </div>
+          <div class="loc-row" style="margin-top:8px">
+            <div class="field" style="flex:1;margin-bottom:0"><label>Toleransi Terlambat (menit)</label><input type="number" id="cfgToleransi" /></div>
+            <div class="field" style="flex:1;margin-bottom:0"><label>Maks. Terlambat untuk Kerajinan (kali)</label><input type="number" id="cfgMaksTerlambat" /></div>
+          </div>
+          <div style="margin-top:16px">
+            <button class="btn" id="saveCfgGajiBtn">Simpan Pengaturan Gaji</button>
+            <span id="saveCfgGajiMsg" style="margin-left:10px;font-size:13px;color:#137333"></span>
+          </div>
+        </div>
       </div>
 
       <!-- ================= ABSENSI (Manajemen Absensi + Rekap Bulanan) ================= -->
@@ -451,20 +481,7 @@
         <div id="locList" style="margin-top:10px"></div>
         <button class="btn secondary" id="addLocBtn" type="button">+ Tambah Lokasi</button>
 
-        <div class="section-title">Pengaturan Gaji</div>
-        <div class="hint">Gaji pokok & upah lembur/jam diatur per karyawan di menu Pegawai. Pengaturan di bawah ini berlaku untuk semua karyawan.</div>
-        <div class="loc-row" style="margin-top:8px">
-          <div class="field" style="flex:1;margin-bottom:0"><label>Uang Makan / Hari Masuk (Rp)</label><input type="number" id="cfgUangMakan" /></div>
-          <div class="field" style="flex:1;margin-bottom:0"><label>Uang Transport / Hari Masuk (Rp)</label><input type="number" id="cfgUangTransport" /></div>
-        </div>
-        <div class="loc-row" style="margin-top:8px">
-          <div class="field" style="flex:1;margin-bottom:0"><label>Jatah OFF / Periode (hari)</label><input type="number" id="cfgJatahOff" /></div>
-          <div class="field" style="flex:1;margin-bottom:0"><label>Pengali Potongan OFF (× gaji harian)</label><input type="number" id="cfgPengaliOff" /></div>
-        </div>
-        <div class="loc-row" style="margin-top:8px">
-          <div class="field" style="flex:1;margin-bottom:0"><label>Toleransi Terlambat (menit)</label><input type="number" id="cfgToleransi" /></div>
-          <div class="field" style="flex:1;margin-bottom:0"><label>Maks. Terlambat untuk Kerajinan (kali)</label><input type="number" id="cfgMaksTerlambat" /></div>
-        </div>
+        <div class="hint" style="margin-top:18px">Pengaturan gaji (uang makan, uang transport, jatah OFF, dll) sekarang ada di menu <b>Gaji &gt; Pengaturan Gaji</b>.</div>
 
         <div class="field" style="margin-top:16px"><label>Ganti Email Admin (kosongkan jika tidak diubah)</label><input type="email" id="cfgEmail" placeholder="nama@email.com" /></div>
         <div class="field"><label>Ganti Password Admin (kosongkan jika tidak diubah)</label><input type="password" id="cfgPassword" /></div>
@@ -538,7 +555,7 @@ function showApp() {
 }
 
 // ---- Navigasi sidebar ----
-const PAGES = ['dashboard','pegawai','ijincuti','slipgaji','absensi','kasbon','setting'];
+const PAGES = ['dashboard','pegawai','ijincuti','gaji','absensi','kasbon','setting'];
 document.querySelectorAll('.side-item[data-page]').forEach((item) => {
   item.addEventListener('click', () => {
     document.querySelectorAll('.side-item[data-page]').forEach((t) => t.classList.remove('active'));
@@ -549,7 +566,7 @@ document.querySelectorAll('.side-item[data-page]').forEach((item) => {
     if (item.dataset.page === 'dashboard') loadDashboard();
     if (item.dataset.page === 'ijincuti') loadLeaves();
     if (item.dataset.page === 'kasbon') loadKasbon();
-    if (item.dataset.page === 'slipgaji') loadGaji();
+    if (item.dataset.page === 'gaji') loadGaji();
   });
 });
 
@@ -559,6 +576,17 @@ document.querySelectorAll('#page-absensi .tab').forEach((tab) => {
     document.querySelectorAll('#page-absensi .tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
     ['harian','bulanan','export'].forEach((name) => {
+      document.getElementById('sub-' + name).style.display = (name === tab.dataset.subtab) ? 'block' : 'none';
+    });
+  });
+});
+
+// Sub-tab Gaji: Slip Gaji / Pengaturan Gaji
+document.querySelectorAll('#page-gaji .tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('#page-gaji .tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    ['slip','pengaturangaji'].forEach((name) => {
       document.getElementById('sub-' + name).style.display = (name === tab.dataset.subtab) ? 'block' : 'none';
     });
   });
@@ -1464,6 +1492,7 @@ function openEmpModal(idx) {
   document.getElementById('empFTunjanganFungsional').value = emp.tunjanganFungsional || '';
   document.getElementById('empFTunjanganNatura').value = emp.tunjanganNatura || '';
   document.getElementById('empFStatus').value = emp.status || 'aktif';
+  document.getElementById('empFDapatUangMakan').checked = emp.dapatUangMakan !== false;
   const photoEl = document.getElementById('empModalPhoto');
   photoEl.style.visibility = 'visible';
   photoEl.src = emp.phone ? `/api/employee-photo/${encodeURIComponent(emp.phone)}?t=${Date.now()}` : '';
@@ -1501,6 +1530,7 @@ document.getElementById('empModalSaveBtn').addEventListener('click', async () =>
     tunjanganFungsional: Number(document.getElementById('empFTunjanganFungsional').value) || 0,
     tunjanganNatura: Number(document.getElementById('empFTunjanganNatura').value) || 0,
     status: document.getElementById('empFStatus').value,
+    dapatUangMakan: document.getElementById('empFDapatUangMakan').checked,
   };
 
   if (empModalIndex === null) {
@@ -1620,12 +1650,6 @@ document.getElementById('saveCfgBtn').addEventListener('click', async () => {
     locations: currentLocations
       .filter((l) => l.name && !isNaN(l.lat) && !isNaN(l.lng))
       .map((l) => ({ ...l, shifts: (l.shifts || []).filter((s) => s.name && s.startTime && s.endTime) })),
-    uangMakanPerHari: Number(document.getElementById('cfgUangMakan').value) || 0,
-    uangTransportPerHari: Number(document.getElementById('cfgUangTransport').value) || 0,
-    jatahOffPerPeriode: Number(document.getElementById('cfgJatahOff').value) || 0,
-    pengaliPotonganOff: Number(document.getElementById('cfgPengaliOff').value) || 0,
-    toleransiTerlambatMenit: Number(document.getElementById('cfgToleransi').value) || 0,
-    maksTerlambatUntukKerajinan: Number(document.getElementById('cfgMaksTerlambat').value) || 0,
   };
   const pw = document.getElementById('cfgPassword').value;
   if (pw) body.adminPassword = pw;
@@ -1635,6 +1659,23 @@ document.getElementById('saveCfgBtn').addEventListener('click', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body),
   });
   const msg = document.getElementById('saveMsg');
+  if (res.ok) { msg.textContent = 'Tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); }
+  else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan'; }
+});
+
+document.getElementById('saveCfgGajiBtn').addEventListener('click', async () => {
+  const body = {
+    uangMakanPerHari: Number(document.getElementById('cfgUangMakan').value) || 0,
+    uangTransportPerHari: Number(document.getElementById('cfgUangTransport').value) || 0,
+    jatahOffPerPeriode: Number(document.getElementById('cfgJatahOff').value) || 0,
+    pengaliPotonganOff: Number(document.getElementById('cfgPengaliOff').value) || 0,
+    toleransiTerlambatMenit: Number(document.getElementById('cfgToleransi').value) || 0,
+    maksTerlambatUntukKerajinan: Number(document.getElementById('cfgMaksTerlambat').value) || 0,
+  };
+  const res = await fetch('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body),
+  });
+  const msg = document.getElementById('saveCfgGajiMsg');
   if (res.ok) { msg.textContent = 'Tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); }
   else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan'; }
 });

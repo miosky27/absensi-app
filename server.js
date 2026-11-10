@@ -113,6 +113,7 @@ function migrateConfig(config) {
     if (emp.upahLemburPerJam === undefined) { emp.upahLemburPerJam = 0; changed = true; }
     if (emp.tunjanganFungsional === undefined) { emp.tunjanganFungsional = 0; changed = true; }
     if (emp.tunjanganNatura === undefined) { emp.tunjanganNatura = 0; changed = true; }
+    if (emp.dapatUangMakan === undefined) { emp.dapatUangMakan = true; changed = true; }
     if (emp.email === undefined) { emp.email = ''; changed = true; }
     if (emp.tanggalMasuk === undefined) { emp.tanggalMasuk = ''; changed = true; }
     if (emp.status === undefined) { emp.status = 'aktif'; changed = true; }
@@ -465,7 +466,8 @@ function computePayrollSummary(records, config, from, to) {
     const hariCuti = cutiDisetujui[e.employee] || 0;
     const potonganKasbon = kasbonPotongan[e.employee] || 0;
 
-    const uangMakan = e.hariHadir * (config.uangMakanPerHari || 0);
+    const dapatUangMakan = emp.dapatUangMakan !== false;
+    const uangMakan = dapatUangMakan ? e.hariHadir * (config.uangMakanPerHari || 0) : 0;
     const uangTransport = e.hariHadir * (config.uangTransportPerHari || 0);
     const lemburAwalJam = Math.round((e.lemburAwalMenit / 60) * 100) / 100;
     const lemburAkhirJam = Math.round((e.lemburAkhirMenit / 60) * 100) / 100;
