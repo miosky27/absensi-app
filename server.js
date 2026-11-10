@@ -241,7 +241,7 @@ function computeLemburTambahanByEmployeeDate(records) {
 // - terlambatMenit : datang sesudah jam shift mulai, dikurangi toleransi
 // - lemburAkhirMenit: pulang sesudah jam shift selesai
 // - pulangCepatMenit: pulang sebelum jam shift selesai (hanya jika ada record keluar hari itu)
-function computePayrollDailyByEmployeeDate(records, toleransiMenit) {
+function computePayrollDailyByEmployeeDate(records, toleransiMenit, config) {
   const grouped = {}; // key: employee|date -> { masuk, keluar, shiftStart, shiftEnd }
   for (const r of records) {
     const key = r.employee + '|' + r.dateKey;
@@ -255,17 +255,25 @@ function computePayrollDailyByEmployeeDate(records, toleransiMenit) {
       g.keluar = timeToMinutes(r.timeHHMM);
     }
   }
+  // Fallback jadwal shift standar (08:00 + 8 jam kerja) dipakai kalau record tidak punya
+  // shiftStart/shiftEnd sendiri — misalnya absen yang di-input manual oleh admin (tombol
+  // "+ Isi" di menu Absensi), yang tidak melalui pemilihan shift seperti absen GPS biasa.
+  // Tanpa fallback ini, jam lembur/pulang-cepat tidak pernah terhitung untuk absen manual.
+  const fallbackShiftStart = timeToMinutes((config && config.workStartTime) || '08:00');
+  const fallbackShiftEnd = fallbackShiftStart + JAM_KERJA_STANDAR_MENIT;
   const result = {};
   for (const key of Object.keys(grouped)) {
     const g = grouped[key];
+    const shiftStart = g.shiftStart !== null ? g.shiftStart : fallbackShiftStart;
+    const shiftEnd = g.shiftEnd !== null ? g.shiftEnd : fallbackShiftEnd;
     const out = { lemburAwalMenit: 0, terlambatMenit: 0, lemburAkhirMenit: 0, pulangCepatMenit: 0, hadir: g.masuk !== null };
-    if (g.masuk !== null && g.shiftStart !== null) {
-      if (g.masuk < g.shiftStart) out.lemburAwalMenit = g.shiftStart - g.masuk;
-      else if (g.masuk > g.shiftStart + toleransiMenit) out.terlambatMenit = g.masuk - g.shiftStart;
+    if (g.masuk !== null) {
+      if (g.masuk < shiftStart) out.lemburAwalMenit = shiftStart - g.masuk;
+      else if (g.masuk > shiftStart + toleransiMenit) out.terlambatMenit = g.masuk - shiftStart;
     }
-    if (g.keluar !== null && g.shiftEnd !== null) {
-      if (g.keluar > g.shiftEnd) out.lemburAkhirMenit = g.keluar - g.shiftEnd;
-      else if (g.keluar < g.shiftEnd) out.pulangCepatMenit = g.shiftEnd - g.keluar;
+    if (g.keluar !== null) {
+      if (g.keluar > shiftEnd) out.lemburAkhirMenit = g.keluar - shiftEnd;
+      else if (g.keluar < shiftEnd) out.pulangCepatMenit = shiftEnd - g.keluar;
     }
     result[key] = out;
   }
@@ -383,7 +391,7 @@ function sumKasbonPaymentsByEmployee(payments, from, to) {
 function computePayrollSummary(records, config, from, to) {
   const totalHariPeriode = countDaysInclusive(from, to);
   const toleransi = config.toleransiTerlambatMenit || 0;
-  const daily = computePayrollDailyByEmployeeDate(records, toleransi);
+  const daily = computePayrollDailyByEmployeeDate(records, toleransi, config);
   const lemburTambahan = computeLemburTambahanByEmployeeDate(records);
   const cutiDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE), from, to);
   const kasbonPotongan = sumKasbonPaymentsByEmployee(readJSON(KASBON_PAYMENTS_FILE), from, to);
