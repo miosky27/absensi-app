@@ -441,7 +441,11 @@ function computePayrollSummary(records, config, from, to) {
     // hanya kena potongan 1x upah harian (bukan pengaliPotonganOff / biasanya 2x), karena
     // karyawan memang belum mulai bekerja saat itu. Kuota OFF gratis (jatahOffPerPeriode)
     // dipakai dulu buat hari2 absen yang PALING AWAL secara kronologis.
-    const absentDates = computeAbsentDates(e.employee, from, to, e.presentDates, leaves);
+    // Jangan hitung hari di MASA DEPAN sebagai alpa — kalau periode gajian belum selesai
+    // (misal lagi dilihat sebelum tanggal 25), hari yang belum kejalanin bukan alpa.
+    const todayKeyForAbsent = dateKeyJakarta(new Date().toISOString());
+    const absentTo = to < todayKeyForAbsent ? to : todayKeyForAbsent;
+    const absentDates = to < from ? [] : computeAbsentDates(e.employee, from, absentTo, e.presentDates, leaves);
     const hariTidakHadir = absentDates.length;
     const jatah = config.jatahOffPerPeriode || 0;
     const offBerlebih = Math.max(0, hariTidakHadir - jatah);
