@@ -867,6 +867,16 @@ function formatRupiahServer(n) {
   const sign = n < 0 ? '-' : '';
   return sign + 'Rp' + Math.abs(Math.round(n)).toLocaleString('id-ID');
 }
+// Tanggal 1 s.d. akhir bulan dari "YYYY-MM" (dipakai untuk periode Laporan Kasbon, Task #49:
+// periode kasbon = 1 bulan kalender penuh, terpisah dari periode gajian 26-25).
+function monthRange(yyyyMm) {
+  const [y, m] = String(yyyyMm).split('-').map(Number);
+  const from = `${y}-${String(m).padStart(2, '0')}-01`;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate(); // hari ke-0 bulan berikutnya = hari terakhir bulan ini
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { from, to };
+}
+
 // Nama sheet Excel tidak boleh mengandung \ / ? * [ ] : dan maksimal 31 karakter.
 function safeSheetName(name) {
   return (name || 'Slip').replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31) || 'Slip';
@@ -1943,23 +1953,74 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { kasbon: result });
     }
     // Export rekap Kasbon ke .xlsx — seluruh data (halaman Kasbon tidak punya filter tanggal/status).
+    // Export Laporan Kasbon (Task #49): format LEDGER per transaksi per karyawan, bukan
+    // tabel ringkasan flat. Periode = 1 bulan kalender penuh (param "bulan"=YYYY-MM), beda
+    // dari periode gajian 26-25. Kolom Sisa = saldo berjalan dihitung dari SELURUH histori
+    // kasbon karyawan (bukan cuma transaksi yang masuk periode filter), supaya angkanya
+    // nyambung dari bulan-bulan sebelumnya - tapi baris yang DITAMPILKAN tetap difilter
+    // sesuai bulan yang dipilih.
     if (pathName === '/api/kasbon/export' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
-      const kasbonList = readJSON(KASBON_FILE);
-      const payments = readJSON(KASBON_PAYMENTS_FILE);
-      const result = kasbonList.map((k) => {
-        const dibayar = payments.filter((p) => p.kasbonId === k.id).reduce((s, p) => s + p.jumlah, 0);
-        return { ...k, dibayar, sisa: Math.max(0, k.jumlah - dibayar) };
-      }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      const bulan = url.searchParams.get('bulan'); // YYYY-MM
+      if (!bulan || !/^\d{4}-\d{2}$/.test(bulan)) return sendJSON(res, 400, { error: 'Parameter bulan (YYYY-MM) wajib diisi' });
+      const { from, to } = monthRange(bulan);
+      const phonesParam = (url.searchParams.get('employees') || '').trim();
+      const selectedPhones = phonesParam ? phonesParam.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      if (selectedPhones.length === 0) return sendJSON(res, 400, { error: 'Pilih minimal satu karyawan untuk di-export' });
 
-      const headerRow = ['Nama', 'Jenis', 'Jumlah', 'Cicilan/Bulan', 'Dibayar', 'Sisa', 'Status', 'Catatan'];
-      const dataRows = result.map((k) => [
-        k.employee || '', k.jenis === 'cicil' ? 'Cicil' : 'Potong Lunas', k.jumlah, k.cicilanPerBulan || 0, k.dibayar, k.sisa, k.status || '', k.catatan || '',
-      ]);
-      const xlsxBuffer = buildXlsx([{ name: 'Kasbon', rows: [headerRow, ...dataRows] }]);
+      const kasbonList = readJSON(KASBON_FILE).filter((k) => k.status === 'disetujui' || k.status === 'lunas');
+      const payments = readJSON(KASBON_PAYMENTS_FILE);
+      const B = XLSX_STYLE.BOLD, BU = XLSX_STYLE.BOLD_UNDERLINE, BT = XLSX_STYLE.BOLD_TOPBORDER;
+      const bold = (v) => ({ v, s: B });
+      const headerCell = (v) => ({ v, s: BU });
+
+      const sheets = selectedPhones.map((phone) => {
+        const emp = config.employees.find((e) => e.phone === phone);
+        const employeeName = emp ? emp.name : phone;
+        const empKasbon = kasbonList.filter((k) => k.phone === phone);
+        const kasbonIds = new Set(empKasbon.map((k) => k.id));
+        const empPayments = payments.filter((p) => kasbonIds.has(p.kasbonId));
+        const jenisByKasbonId = {};
+        empKasbon.forEach((k) => { jenisByKasbonId[k.id] = k.jenis; });
+
+        // Gabungkan jadi satu daftar transaksi (pinjam + bayar), urut tanggal lalu waktu dibuat,
+        // dari SELURUH histori (tidak difilter periode dulu - buat hitung saldo berjalan).
+        const transaksi = [];
+        empKasbon.forEach((k) => transaksi.push({ tanggal: k.tanggal, createdAt: k.createdAt, tipe: 'pinjam', jenis: k.jenis, jumlah: k.jumlah }));
+        empPayments.forEach((p) => transaksi.push({ tanggal: p.tanggal, createdAt: p.createdAt, tipe: 'bayar', jenis: jenisByKasbonId[p.kasbonId] || 'cicil', jumlah: p.jumlah }));
+        transaksi.sort((a, b) => (a.tanggal + a.createdAt).localeCompare(b.tanggal + b.createdAt));
+
+        let saldo = 0;
+        const rows = [
+          [bold('No ID'), ':', emp ? (emp.idNumber || '-') : '-'],
+          [bold('Nama Karyawan'), ':', employeeName],
+          [bold('Periode'), ':', `${formatTanggalSlash(from)} s/d ${formatTanggalSlash(to)}`],
+          [],
+          [headerCell('Tanggal'), headerCell('Kasbon: Cicil'), headerCell('Kasbon: Potlang'), headerCell('Bayar: Cicil'), headerCell('Bayar: Potlang'), headerCell('Sisa')],
+        ];
+        let adaBarisPeriode = false;
+        transaksi.forEach((t) => {
+          saldo += t.tipe === 'pinjam' ? t.jumlah : -t.jumlah;
+          if (t.tanggal < from || t.tanggal > to) return; // hitung saldo tetap jalan, tapi baris cuma ditampilkan kalau masuk periode
+          adaBarisPeriode = true;
+          rows.push([
+            formatTanggalSlash(t.tanggal),
+            t.tipe === 'pinjam' && t.jenis === 'cicil' ? formatRupiahServer(t.jumlah) : '',
+            t.tipe === 'pinjam' && t.jenis === 'potlang' ? formatRupiahServer(t.jumlah) : '',
+            t.tipe === 'bayar' && t.jenis === 'cicil' ? formatRupiahServer(t.jumlah) : '',
+            t.tipe === 'bayar' && t.jenis === 'potlang' ? formatRupiahServer(t.jumlah) : '',
+            formatRupiahServer(Math.max(0, saldo)),
+          ]);
+        });
+        if (!adaBarisPeriode) rows.push(['Tidak ada transaksi kasbon pada periode ini.']);
+
+        return { name: safeSheetName(employeeName), rows };
+      });
+
+      const xlsxBuffer = buildXlsx(sheets);
       res.writeHead(200, {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': 'attachment; filename="kasbon.xlsx"',
+        'Content-Disposition': `attachment; filename="laporan-kasbon-${bulan}.xlsx"`,
       });
       return res.end(xlsxBuffer);
     }

@@ -490,13 +490,17 @@
         <div class="topbar"><h2 class="page-title">Kasbon</h2></div>
         <div class="breadcrumb">Dashboard &gt; Kasbon</div>
         <div class="card">
-          <div style="margin-bottom:10px;display:flex;gap:10px">
+          <div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button class="btn" id="addKasbonBtn" type="button">+ Tambah Kasbon</button>
-            <button class="btn secondary" id="exportKasbonBtn" type="button">Export</button>
+            <span style="width:1px;align-self:stretch;background:#e2d9de"></span>
+            <label style="font-size:13px;color:#555">Bulan Laporan</label>
+            <input type="month" id="kasbonExportBulan" style="width:150px" />
+            <button class="btn secondary" id="exportKasbonBtn" type="button">Export Laporan Kasbon</button>
           </div>
+          <div class="hint" style="margin-bottom:10px">Centang karyawan yang mau di-export (bisa pilih satu atau semua), pilih bulan laporan, lalu klik Export. Laporan berisi histori transaksi kasbon per karyawan (format ledger) untuk bulan tersebut.</div>
           <div style="overflow-x:auto">
             <table id="kasbonTable">
-              <thead><tr><th>Nama</th><th>Jenis</th><th>Jumlah</th><th>Dibayar</th><th>Sisa</th><th>Status</th><th>Aksi</th></tr></thead>
+              <thead><tr><th><input type="checkbox" id="kasbonSelectAll" /></th><th>Nama</th><th>Jenis</th><th>Jumlah</th><th>Dibayar</th><th>Sisa</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -1245,14 +1249,25 @@ document.getElementById('leaveClearBtn').addEventListener('click', () => {
 });
 
 // ---- Kasbon ----
+document.getElementById('kasbonSelectAll').addEventListener('change', (e) => {
+  document.querySelectorAll('.kasbon-row-check:not(:disabled)').forEach((cb) => { cb.checked = e.target.checked; });
+});
+(function () {
+  const bulanEl = document.getElementById('kasbonExportBulan');
+  bulanEl.value = new Date().toISOString().slice(0, 7);
+})();
 document.getElementById('exportKasbonBtn').addEventListener('click', async () => {
+  const bulan = document.getElementById('kasbonExportBulan').value;
+  if (!bulan) { alert('Pilih bulan laporan dulu.'); return; }
+  const phones = [...new Set(Array.from(document.querySelectorAll('.kasbon-row-check:checked')).map((cb) => cb.dataset.phone).filter(Boolean))];
+  if (phones.length === 0) { alert('Centang minimal satu karyawan di tabel untuk di-export.'); return; }
   try {
-    const res = await fetch('/api/kasbon/export', { headers: authHeaders() });
+    const res = await fetch(`/api/kasbon/export?bulan=${bulan}&employees=${encodeURIComponent(phones.join(','))}`, { headers: authHeaders() });
     if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal membuat file export.'); return; }
     const blob = await res.blob();
     const disposition = res.headers.get('Content-Disposition') || '';
     const match = disposition.match(/filename="([^"]+)"/);
-    const filename = match ? match[1] : 'kasbon.xlsx';
+    const filename = match ? match[1] : `laporan-kasbon-${bulan}.xlsx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename;
@@ -1318,6 +1333,7 @@ async function loadKasbon() {
     const tr = document.createElement('tr');
     const canBayar = k.status !== 'lunas' && k.sisa > 0;
     tr.innerHTML = `
+      <td><input type="checkbox" class="kasbon-row-check" data-phone="${k.phone || ''}" ${k.phone ? '' : 'disabled'} /></td>
       <td>${k.employee}</td><td>${k.jenis}${k.jenis === 'cicil' && k.cicilanPerBulan ? `<div class="hint">${formatRupiah(k.cicilanPerBulan)}/bulan</div>` : ''}</td><td>${formatRupiah(k.jumlah)}</td>
       <td>${formatRupiah(k.dibayar)}</td><td>${formatRupiah(k.sisa)}</td>
       <td><span class="badge ${k.status}">${k.status}</span></td>
