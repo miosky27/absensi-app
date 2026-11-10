@@ -496,12 +496,12 @@ function computePayrollSummary(records, config, from, to) {
     const dapatUangMakan = emp.dapatUangMakan !== false;
     const uangMakan = dapatUangMakan ? e.hariHadir * (config.uangMakanPerHari || 0) : 0;
     const uangTransport = e.hariHadir * (config.uangTransportPerHari || 0);
-    const lemburAwalJam = Math.round((e.lemburAwalMenit / 60) * 100) / 100;
-    const lemburAkhirJam = Math.round((e.lemburAkhirMenit / 60) * 100) / 100;
-    const pulangCepatJam = Math.round((e.pulangCepatMenit / 60) * 100) / 100;
-    const terlambatJam = Math.round((e.terlambatMenit / 60) * 100) / 100;
-    const terlambatJamPotongan = Math.round((e.terlambatMenitPotongan / 60) * 100) / 100;
-    const lemburTambahanJam = Math.round((e.lemburTambahanMenit / 60) * 100) / 100;
+    const lemburAwalJam = roundJamBertingkat(e.lemburAwalMenit);
+    const lemburAkhirJam = roundJamBertingkat(e.lemburAkhirMenit);
+    const pulangCepatJam = roundJamBertingkat(e.pulangCepatMenit);
+    const terlambatJam = roundJamBertingkat(e.terlambatMenit);
+    const terlambatJamPotongan = roundJamBertingkat(e.terlambatMenitPotongan);
+    const lemburTambahanJam = roundJamBertingkat(e.lemburTambahanMenit);
 
     const lemburAwalRp = Math.round(lemburAwalJam * upahJam);
     const lemburAkhirRp = Math.round(lemburAkhirJam * upahJam);
@@ -890,6 +890,19 @@ function formatTanggalSlash(ymd) {
 function formatJamKoma(n) {
   return (Math.round(n * 10) / 10).toFixed(1).replace('.', ',');
 }
+// Pembulatan jam bertingkat untuk lembur/terlambat/pulang cepat (dikali upah per jam):
+// sisa menit dari jam penuh 0-14 -> 0.0, 15-44 -> 0.5, 45-59 -> 1.0 (naik ke jam berikutnya).
+// Contoh: 3 jam 15 menit (195 menit) -> 3.5 jam.
+function roundJamBertingkat(menit) {
+  if (!menit || menit <= 0) return 0;
+  const jamPenuh = Math.floor(menit / 60);
+  const sisaMenit = menit % 60;
+  let tambahan;
+  if (sisaMenit < 15) tambahan = 0;
+  else if (sisaMenit < 45) tambahan = 0.5;
+  else tambahan = 1;
+  return jamPenuh + tambahan;
+}
 function formatRupiahServer(n) {
   const sign = n < 0 ? '-' : '';
   return sign + 'Rp' + Math.abs(Math.round(n)).toLocaleString('id-ID');
@@ -1220,7 +1233,7 @@ const server = http.createServer(async (req, res) => {
     if (pathName === '/api/records/manual' && req.method === 'POST') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const body = JSON.parse((await readBody(req)).toString('utf8'));
-      const { phone, type, dateKey, timeHHMM } = body;
+      const { phone, type, dateKey, timeHHMM, locationName, shift } = body;
       const emp = config.employees.find((e) => e.phone === String(phone || '').trim());
       if (!emp) return sendJSON(res, 400, { error: 'Karyawan tidak ditemukan.' });
       if (!['masuk', 'keluar', 'lembur_masuk', 'lembur_keluar'].includes(type)) {
@@ -1228,6 +1241,19 @@ const server = http.createServer(async (req, res) => {
       }
       if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return sendJSON(res, 400, { error: 'Tanggal tidak valid.' });
       if (!timeHHMM || !/^\d{2}:\d{2}$/.test(timeHHMM)) return sendJSON(res, 400, { error: 'Jam tidak valid (format HH:MM).' });
+
+      // Shift wajib dipilih utk jenis Masuk (dipakai untuk hitung lembur/terlambat akurat,
+      // bukan fallback shift standar) — dicocokkan ke daftar shift lokasi yang dipilih admin.
+      let shiftInfo = null;
+      let resolvedLocationName = 'Input Manual Admin';
+      if (type === 'masuk') {
+        if (!locationName || !shift) return sendJSON(res, 400, { error: 'Pilih lokasi dan shift terlebih dahulu.' });
+        const loc = (config.locations || []).find((l) => l.name === locationName);
+        if (!loc) return sendJSON(res, 400, { error: 'Lokasi tidak dikenali.' });
+        shiftInfo = (loc.shifts || []).find((s) => s.name === shift) || null;
+        if (!shiftInfo) return sendJSON(res, 400, { error: 'Shift tidak dikenali untuk lokasi ini.' });
+        resolvedLocationName = loc.name;
+      }
 
       const records = readJSON(RECORDS_FILE);
       const exists = records.find((r) => r.phone === emp.phone && r.dateKey === dateKey && r.type === type);
@@ -1240,12 +1266,12 @@ const server = http.createServer(async (req, res) => {
         type,
         lat: null,
         lng: null,
-        nearestLocation: 'Input Manual Admin',
+        nearestLocation: resolvedLocationName,
         distanceMeters: 0,
         withinRadius: true,
-        shift: null,
-        shiftStart: null,
-        shiftEnd: null,
+        shift: shiftInfo ? shiftInfo.name : null,
+        shiftStart: shiftInfo ? shiftInfo.startTime : null,
+        shiftEnd: shiftInfo ? shiftInfo.endTime : null,
         photoFilename: null,
         serverTime: new Date().toISOString(),
         deviceTime: null,
@@ -1268,6 +1294,17 @@ const server = http.createServer(async (req, res) => {
       if (!r) return sendJSON(res, 404, { error: 'Data absen tidak ditemukan' });
       if (!body.timeHHMM || !/^\d{2}:\d{2}$/.test(body.timeHHMM)) return sendJSON(res, 400, { error: 'Jam tidak valid (format HH:MM).' });
       r.timeHHMM = body.timeHHMM;
+      // Kalau admin ikut ubah lokasi/shift (hanya relevan utk record jenis masuk).
+      if (r.type === 'masuk' && body.locationName && body.shift) {
+        const loc = (config.locations || []).find((l) => l.name === body.locationName);
+        if (!loc) return sendJSON(res, 400, { error: 'Lokasi tidak dikenali.' });
+        const shiftInfo = (loc.shifts || []).find((s) => s.name === body.shift) || null;
+        if (!shiftInfo) return sendJSON(res, 400, { error: 'Shift tidak dikenali untuk lokasi ini.' });
+        r.nearestLocation = loc.name;
+        r.shift = shiftInfo.name;
+        r.shiftStart = shiftInfo.startTime;
+        r.shiftEnd = shiftInfo.endTime;
+      }
       r.manualByAdmin = true;
       writeJSON(RECORDS_FILE, records);
       return sendJSON(res, 200, { ok: true, record: r });

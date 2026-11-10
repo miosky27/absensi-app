@@ -325,6 +325,27 @@
         </div>
       </div>
 
+      <!-- ================= MODAL: ISI/EDIT ABSEN MASUK (admin, manual, dgn pilih shift) ================= -->
+      <div id="absenMasukModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:60">
+        <div style="background:#fff;border-radius:14px;width:420px;max-width:94%;max-height:88vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+          <div style="background:#702464;color:#fff;padding:16px 22px;font-weight:800;font-size:16px;display:flex;justify-content:space-between;align-items:center">
+            <span id="absenMasukModalTitle">Isi Jam Masuk</span>
+            <span style="cursor:pointer;opacity:.8" id="absenMasukModalClose">✕</span>
+          </div>
+          <div style="padding:20px 22px;display:flex;flex-direction:column;gap:14px">
+            <div class="hint" style="margin:0">Pilih lokasi &amp; shift supaya hitungan lembur/terlambat akurat sesuai jadwal shift yang sebenarnya dijalani.</div>
+            <div class="field" style="margin:0"><label>Jam Masuk</label><input type="time" id="absenMasukFJam" /></div>
+            <div class="field" style="margin:0"><label>Lokasi</label><select id="absenMasukFLokasi"></select></div>
+            <div class="field" style="margin:0"><label>Shift</label><select id="absenMasukFShift"></select></div>
+          </div>
+          <div style="padding:16px 22px;border-top:1px solid #eee;display:flex;justify-content:flex-end;align-items:center;gap:10px">
+            <span id="absenMasukModalMsg" style="font-size:13px;color:#c5221f"></span>
+            <button class="btn secondary" type="button" id="absenMasukModalCancelBtn">Batal</button>
+            <button class="btn" type="button" id="absenMasukModalSaveBtn">Simpan</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ================= IJIN/CUTI ================= -->
       <div id="page-ijincuti" class="page" style="display:none">
         <div class="topbar"><h2 class="page-title">Ijin / Cuti</h2></div>
@@ -755,11 +776,20 @@ async function loadDaily() {
     const photoUrl = photoRecord ? '/api/photo/' + photoRecord.photoFilename + '?t=' + token : null;
 
     const editBtn = (g, type) => emp.phone
-      ? `<button class="btn secondary small" type="button" data-manualedit="${type}" data-phone="${emp.phone}" data-recid="${g[type] ? g[type].id : ''}" data-current="${g[type] ? g[type].timeHHMM : ''}" style="padding:2px 8px;font-size:11px;margin-left:4px">${g[type] ? 'Edit' : '+ Isi'}</button>`
+      ? `<button class="btn secondary small" type="button" data-manualedit="${type}" data-phone="${emp.phone}" data-recid="${g[type] ? g[type].id : ''}" data-current="${g[type] ? g[type].timeHHMM : ''}" data-loc="${g[type] ? (g[type].nearestLocation || '') : ''}" data-shift="${g[type] ? (g[type].shift || '') : ''}" style="padding:2px 8px;font-size:11px;margin-left:4px">${g[type] ? 'Edit' : '+ Isi'}</button>`
       : '';
     const deleteBtn = (g, type) => (g[type] && emp.phone)
       ? `<button class="btn small" type="button" data-manualdelete="${g[type].id}" style="padding:2px 8px;font-size:11px;margin-left:4px;background:#f3b6b6;">Hapus</button>`
       : '';
+    // Jam absen yang punya foto jadi bisa diklik untuk lihat foto record itu sendiri
+    // (sebelumnya kolom foto kiri cuma nampilin 1 foto dengan prioritas masuk>keluar>lembur,
+    // jadi foto pulang/lembur gak pernah kelihatan kalau karyawan sudah absen masuk).
+    const jamText = (g, type, label) => {
+      if (!g[type]) return label;
+      if (!g[type].photoFilename) return label;
+      const url = '/api/photo/' + g[type].photoFilename + '?t=' + token;
+      return `<span class="jam-foto" style="cursor:pointer;text-decoration:underline dotted" title="Lihat foto" onclick="openOverlay('${url}')">${label}</span>`;
+    };
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -768,10 +798,10 @@ async function loadDaily() {
         : `<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:#bbb;font-size:18px">—</div>`}</td>
       <td>${name}</td>
       <td>${emp.idNumber || '—'}</td>
-      <td>${g.masuk ? `${g.masuk.timeHHMM} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}${editBtn(g, 'masuk')}${deleteBtn(g, 'masuk')}</td>
-      <td>${g.keluar ? `${g.keluar.timeHHMM} ${attendanceStatusBadge(g.keluar)}` : '—'}${editBtn(g, 'keluar')}${deleteBtn(g, 'keluar')}</td>
-      <td>${g.lembur_masuk ? `${g.lembur_masuk.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_masuk')}${deleteBtn(g, 'lembur_masuk')}</td>
-      <td>${g.lembur_keluar ? `${g.lembur_keluar.timeHHMM} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_keluar')}${deleteBtn(g, 'lembur_keluar')}</td>
+      <td>${g.masuk ? `${jamText(g, 'masuk', g.masuk.timeHHMM)} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}${editBtn(g, 'masuk')}${deleteBtn(g, 'masuk')}</td>
+      <td>${g.keluar ? `${jamText(g, 'keluar', g.keluar.timeHHMM)} ${attendanceStatusBadge(g.keluar)}` : '—'}${editBtn(g, 'keluar')}${deleteBtn(g, 'keluar')}</td>
+      <td>${g.lembur_masuk ? `${jamText(g, 'lembur_masuk', g.lembur_masuk.timeHHMM)} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_masuk')}${deleteBtn(g, 'lembur_masuk')}</td>
+      <td>${g.lembur_keluar ? `${jamText(g, 'lembur_keluar', g.lembur_keluar.timeHHMM)} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_keluar')}${deleteBtn(g, 'lembur_keluar')}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -785,6 +815,14 @@ async function loadDaily() {
       const phone = btn.dataset.phone;
       const recId = btn.dataset.recid;
       const current = btn.dataset.current;
+
+      // Jenis Masuk butuh pilih Lokasi + Shift juga (dipakai utk hitung lembur/terlambat
+      // akurat), jadi pakai modal sendiri, bukan prompt() biasa.
+      if (type === 'masuk') {
+        openAbsenMasukModal({ phone, recId, current, loc: btn.dataset.loc, shift: btn.dataset.shift, dateKey: date });
+        return;
+      }
+
       const label = tipeLabel[type] || type;
       const input = prompt(`Jam ${label} (format HH:MM):`, current || '08:00');
       if (input === null) return;
@@ -1277,6 +1315,62 @@ document.getElementById('exportKasbonBtn').addEventListener('click', async () =>
     alert('Gagal mengunduh: ' + e.message);
   }
 });
+// ---- Modal isi/edit absen Masuk (dengan pilih Lokasi + Shift, Task #52) ----
+let absenMasukCtx = null; // { phone, recId, dateKey }
+function populateAbsenMasukShiftOptions(selectedShift) {
+  const locName = document.getElementById('absenMasukFLokasi').value;
+  const loc = currentLocations.find((l) => l.name === locName);
+  const shiftSel = document.getElementById('absenMasukFShift');
+  const shifts = (loc && loc.shifts) || [];
+  shiftSel.innerHTML = shifts.length
+    ? shifts.map((s) => `<option value="${s.name}">${s.name} (${s.startTime}-${s.endTime})</option>`).join('')
+    : '<option value="">(lokasi ini belum punya shift)</option>';
+  if (selectedShift && shifts.some((s) => s.name === selectedShift)) shiftSel.value = selectedShift;
+}
+function openAbsenMasukModal({ phone, recId, current, loc, shift, dateKey }) {
+  absenMasukCtx = { phone, recId, dateKey };
+  document.getElementById('absenMasukModalTitle').textContent = recId ? 'Edit Jam Masuk' : 'Isi Jam Masuk';
+  document.getElementById('absenMasukFJam').value = current || '08:00';
+  const locSel = document.getElementById('absenMasukFLokasi');
+  locSel.innerHTML = currentLocations.filter((l) => l.name).map((l) => `<option value="${l.name}">${l.name}</option>`).join('');
+  if (loc && currentLocations.some((l) => l.name === loc)) locSel.value = loc;
+  populateAbsenMasukShiftOptions(shift);
+  document.getElementById('absenMasukModalMsg').textContent = '';
+  document.getElementById('absenMasukModalOverlay').style.display = 'flex';
+}
+function closeAbsenMasukModal() {
+  document.getElementById('absenMasukModalOverlay').style.display = 'none';
+}
+document.getElementById('absenMasukFLokasi').addEventListener('change', () => populateAbsenMasukShiftOptions());
+document.getElementById('absenMasukModalClose').addEventListener('click', closeAbsenMasukModal);
+document.getElementById('absenMasukModalCancelBtn').addEventListener('click', closeAbsenMasukModal);
+document.getElementById('absenMasukModalSaveBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('absenMasukModalMsg');
+  const timeHHMM = document.getElementById('absenMasukFJam').value;
+  const locationName = document.getElementById('absenMasukFLokasi').value;
+  const shift = document.getElementById('absenMasukFShift').value;
+  if (!timeHHMM) { msg.textContent = 'Jam wajib diisi.'; return; }
+  if (!locationName) { msg.textContent = 'Pilih lokasi dulu.'; return; }
+  if (!shift) { msg.textContent = 'Pilih shift dulu (lokasi ini belum punya shift? atur dulu di Pengaturan).'; return; }
+  const { phone, recId, dateKey } = absenMasukCtx;
+  let res;
+  if (recId) {
+    res = await fetch(`/api/records/${recId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ timeHHMM, locationName, shift }),
+    });
+  } else {
+    res = await fetch('/api/records/manual', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ phone, type: 'masuk', dateKey, timeHHMM, locationName, shift }),
+    });
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { msg.textContent = data.error || 'Gagal menyimpan jam absen.'; return; }
+  closeAbsenMasukModal();
+  loadDaily();
+});
+
 function openKasbonModal() {
   const sel = document.getElementById('kasbonFEmployee');
   sel.innerHTML = currentEmployees
