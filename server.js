@@ -391,6 +391,33 @@ function sumKasbonPaymentsByEmployee(payments, from, to) {
   return result;
 }
 
+// Ledger kasbon satu karyawan untuk periode [from, to] (Task #49/#50): daftar transaksi
+// (pinjam + bayar) yang jatuh di periode ini, dengan saldo berjalan (Sisa) yang dihitung
+// dari SELURUH histori kasbon karyawan itu - bukan cuma transaksi yang masuk periode -
+// supaya saldo tetap nyambung dari bulan-bulan sebelumnya. Dipakai bareng oleh endpoint
+// /api/kasbon/export (format .xlsx) dan /api/period-report (data buat laporan email bulanan).
+function buildKasbonLedger(phone, from, to, kasbonAll, payments) {
+  const empKasbon = kasbonAll.filter((k) => k.phone === phone && (k.status === 'disetujui' || k.status === 'lunas'));
+  const kasbonIds = new Set(empKasbon.map((k) => k.id));
+  const empPayments = payments.filter((p) => kasbonIds.has(p.kasbonId));
+  const jenisByKasbonId = {};
+  empKasbon.forEach((k) => { jenisByKasbonId[k.id] = k.jenis; });
+
+  const transaksi = [];
+  empKasbon.forEach((k) => transaksi.push({ tanggal: k.tanggal, createdAt: k.createdAt, tipe: 'pinjam', jenis: k.jenis, jumlah: k.jumlah }));
+  empPayments.forEach((p) => transaksi.push({ tanggal: p.tanggal, createdAt: p.createdAt, tipe: 'bayar', jenis: jenisByKasbonId[p.kasbonId] || 'cicil', jumlah: p.jumlah }));
+  transaksi.sort((a, b) => (a.tanggal + a.createdAt).localeCompare(b.tanggal + b.createdAt));
+
+  let saldo = 0;
+  const hasil = [];
+  transaksi.forEach((t) => {
+    saldo += t.tipe === 'pinjam' ? t.jumlah : -t.jumlah;
+    if (t.tanggal < from || t.tanggal > to) return;
+    hasil.push({ tanggal: t.tanggal, tipe: t.tipe, jenis: t.jenis, jumlah: t.jumlah, saldoSetelah: Math.max(0, saldo) });
+  });
+  return hasil;
+}
+
 function computePayrollSummary(records, config, from, to) {
   const totalHariPeriode = countDaysInclusive(from, to);
   const toleransi = config.toleransiTerlambatMenit || 0;
@@ -1614,7 +1641,21 @@ const server = http.createServer(async (req, res) => {
           };
         });
 
-      return sendJSON(res, 200, { from, to, summary, detail, payroll, kasbonAktif });
+      // Ledger kasbon (Task #49/#50) untuk laporan email bulanan: periode TERPISAH dari
+      // periode gajian (26-25) di atas - pakai 1 bulan kalender penuh, yaitu bulan tempat
+      // `to` jatuh (karena `to` selalu tanggal 25 bulan berjalan, dan gajian terjadi awal
+      // bulan berikutnya, jadi "1 bulan sebelum gajian" = bulan berjalan itu sendiri).
+      const kasbonBulan = to.slice(0, 7);
+      const kasbonPeriode = monthRange(kasbonBulan);
+      const kasbonLedger = config.employees.map((emp) => ({
+        employee: emp.name,
+        transaksi: buildKasbonLedger(emp.phone, kasbonPeriode.from, kasbonPeriode.to, kasbonAll, kasbonPayments),
+      })).filter((e) => e.transaksi.length > 0);
+
+      return sendJSON(res, 200, {
+        from, to, summary, detail, payroll, kasbonAktif,
+        kasbonLedgerPeriode: kasbonPeriode, kasbonLedger,
+      });
     }
 
     if (pathName === '/api/config' && req.method === 'GET') {
@@ -1968,29 +2009,17 @@ const server = http.createServer(async (req, res) => {
       const selectedPhones = phonesParam ? phonesParam.split(',').map((s) => s.trim()).filter(Boolean) : [];
       if (selectedPhones.length === 0) return sendJSON(res, 400, { error: 'Pilih minimal satu karyawan untuk di-export' });
 
-      const kasbonList = readJSON(KASBON_FILE).filter((k) => k.status === 'disetujui' || k.status === 'lunas');
+      const kasbonAll = readJSON(KASBON_FILE);
       const payments = readJSON(KASBON_PAYMENTS_FILE);
-      const B = XLSX_STYLE.BOLD, BU = XLSX_STYLE.BOLD_UNDERLINE, BT = XLSX_STYLE.BOLD_TOPBORDER;
-      const bold = (v) => ({ v, s: B });
+      const BU = XLSX_STYLE.BOLD_UNDERLINE;
+      const bold = (v) => ({ v, s: XLSX_STYLE.BOLD });
       const headerCell = (v) => ({ v, s: BU });
 
       const sheets = selectedPhones.map((phone) => {
         const emp = config.employees.find((e) => e.phone === phone);
         const employeeName = emp ? emp.name : phone;
-        const empKasbon = kasbonList.filter((k) => k.phone === phone);
-        const kasbonIds = new Set(empKasbon.map((k) => k.id));
-        const empPayments = payments.filter((p) => kasbonIds.has(p.kasbonId));
-        const jenisByKasbonId = {};
-        empKasbon.forEach((k) => { jenisByKasbonId[k.id] = k.jenis; });
+        const ledger = buildKasbonLedger(phone, from, to, kasbonAll, payments);
 
-        // Gabungkan jadi satu daftar transaksi (pinjam + bayar), urut tanggal lalu waktu dibuat,
-        // dari SELURUH histori (tidak difilter periode dulu - buat hitung saldo berjalan).
-        const transaksi = [];
-        empKasbon.forEach((k) => transaksi.push({ tanggal: k.tanggal, createdAt: k.createdAt, tipe: 'pinjam', jenis: k.jenis, jumlah: k.jumlah }));
-        empPayments.forEach((p) => transaksi.push({ tanggal: p.tanggal, createdAt: p.createdAt, tipe: 'bayar', jenis: jenisByKasbonId[p.kasbonId] || 'cicil', jumlah: p.jumlah }));
-        transaksi.sort((a, b) => (a.tanggal + a.createdAt).localeCompare(b.tanggal + b.createdAt));
-
-        let saldo = 0;
         const rows = [
           [bold('No ID'), ':', emp ? (emp.idNumber || '-') : '-'],
           [bold('Nama Karyawan'), ':', employeeName],
@@ -1998,21 +2027,17 @@ const server = http.createServer(async (req, res) => {
           [],
           [headerCell('Tanggal'), headerCell('Kasbon: Cicil'), headerCell('Kasbon: Potlang'), headerCell('Bayar: Cicil'), headerCell('Bayar: Potlang'), headerCell('Sisa')],
         ];
-        let adaBarisPeriode = false;
-        transaksi.forEach((t) => {
-          saldo += t.tipe === 'pinjam' ? t.jumlah : -t.jumlah;
-          if (t.tanggal < from || t.tanggal > to) return; // hitung saldo tetap jalan, tapi baris cuma ditampilkan kalau masuk periode
-          adaBarisPeriode = true;
+        ledger.forEach((t) => {
           rows.push([
             formatTanggalSlash(t.tanggal),
             t.tipe === 'pinjam' && t.jenis === 'cicil' ? formatRupiahServer(t.jumlah) : '',
             t.tipe === 'pinjam' && t.jenis === 'potlang' ? formatRupiahServer(t.jumlah) : '',
             t.tipe === 'bayar' && t.jenis === 'cicil' ? formatRupiahServer(t.jumlah) : '',
             t.tipe === 'bayar' && t.jenis === 'potlang' ? formatRupiahServer(t.jumlah) : '',
-            formatRupiahServer(Math.max(0, saldo)),
+            formatRupiahServer(t.saldoSetelah),
           ]);
         });
-        if (!adaBarisPeriode) rows.push(['Tidak ada transaksi kasbon pada periode ini.']);
+        if (ledger.length === 0) rows.push(['Tidak ada transaksi kasbon pada periode ini.']);
 
         return { name: safeSheetName(employeeName), rows };
       });
