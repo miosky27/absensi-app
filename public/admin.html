@@ -273,6 +273,15 @@
             <button class="btn secondary" type="button" id="leaveFilterBtn">Tampilkan</button>
             <button class="btn secondary" type="button" id="leaveClearBtn">Reset</button>
           </div>
+          <div class="filter-row" style="border-top:1px solid #eee;padding-top:12px;margin-top:4px">
+            <div class="field"><label>Export</label>
+              <select id="leaveExportMode">
+                <option value="filter">Sesuai Filter</option>
+                <option value="all">Semua Data</option>
+              </select>
+            </div>
+            <button class="btn secondary" type="button" id="leaveExportBtn">Export</button>
+          </div>
           <div style="overflow-x:auto">
             <table id="leaveTable">
               <thead><tr><th>Nama</th><th>Jenis</th><th>Mulai</th><th>Selesai</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead>
@@ -294,11 +303,15 @@
             <div class="field" style="flex:1;margin-bottom:0"><label>Dari</label><input type="date" id="gajiFromInput" /></div>
             <div class="field" style="flex:1;margin-bottom:0"><label>Sampai</label><input type="date" id="gajiToInput" /></div>
           </div>
-          <button class="btn secondary" id="loadGajiBtn" type="button" style="margin-top:10px">Tampilkan</button>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn secondary" id="loadGajiBtn" type="button">Tampilkan</button>
+            <button class="btn secondary" id="exportGajiBtn" type="button">Export</button>
+          </div>
           <div class="hint" id="gajiEmpty" style="margin-top:10px"></div>
           <div style="overflow-x:auto; margin-top:10px">
           <table id="gajiTable">
             <thead><tr>
+              <th><input type="checkbox" id="gajiSelectAll" /></th>
               <th>Nama</th><th>Hadir</th><th>Telat (kali)</th><th>OFF Lebih</th><th>Cuti</th>
               <th>Lembur Awal (j)</th><th>Lembur Akhir (j)</th><th>Lembur Tambahan (j)</th><th>Kerajinan</th>
               <th>Potongan</th><th>Kasbon</th><th>Gaji Bersih</th><th></th>
@@ -801,9 +814,11 @@ async function loadGaji() {
     emptyEl.textContent = '';
     lastPayroll = data.payroll;
     data.payroll.forEach((p, idx) => {
+      const emp = currentEmployees.find((e) => e.name === p.employee);
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
       tr.innerHTML = `
+        <td><input type="checkbox" class="gaji-row-check" data-phone="${emp ? emp.phone : ''}" ${emp ? '' : 'disabled'} /></td>
         <td>${p.employee}</td><td>${p.hariHadir}</td><td>${p.terlambatKali}</td><td>${p.offBerlebih}</td><td>${p.hariCuti ?? 0}</td>
         <td>${p.lemburAwalJam}</td><td>${p.lemburAkhirJam}</td><td>${p.lemburTambahanJam}</td>
         <td>${p.kerajinanEligible ? formatRupiah(p.kerajinan) : '-'}</td>
@@ -817,12 +832,38 @@ async function loadGaji() {
     tbody.querySelectorAll('[data-slip]').forEach((btn) => {
       btn.addEventListener('click', () => showSlipDetail(lastPayroll[Number(btn.dataset.slip)], from, to));
     });
+    document.getElementById('gajiSelectAll').checked = false;
     if (data.payroll.length === 0) emptyEl.textContent = 'Belum ada karyawan.';
   } catch (e) {
     emptyEl.textContent = 'Gagal memuat: ' + e.message;
   }
 }
 document.getElementById('loadGajiBtn').addEventListener('click', loadGaji);
+document.getElementById('gajiSelectAll').addEventListener('change', (e) => {
+  document.querySelectorAll('.gaji-row-check:not(:disabled)').forEach((cb) => { cb.checked = e.target.checked; });
+});
+document.getElementById('exportGajiBtn').addEventListener('click', async () => {
+  const from = document.getElementById('gajiFromInput').value;
+  const to = document.getElementById('gajiToInput').value;
+  if (!from || !to) { alert('Pilih periode (Dari/Sampai) dulu, lalu klik Tampilkan.'); return; }
+  const phones = Array.from(document.querySelectorAll('.gaji-row-check:checked')).map((cb) => cb.dataset.phone).filter(Boolean);
+  if (phones.length === 0) { alert('Pilih minimal satu karyawan di tabel untuk di-export.'); return; }
+  try {
+    const res = await fetch(`/api/payroll/export?from=${from}&to=${to}&employees=${encodeURIComponent(phones.join(','))}`, { headers: authHeaders() });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal membuat file export.'); return; }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `slip-gaji-${from}_${to}.xlsx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Gagal mengunduh: ' + e.message);
+  }
+});
 
 function showSlipDetail(p, from, to) {
   const card = document.getElementById('slipDetailCard');
@@ -926,6 +967,31 @@ async function loadLeaves() {
   document.getElementById('leaveEmpty').textContent = (data.leaves || []).length === 0 ? 'Tidak ada pengajuan.' : '';
 }
 document.getElementById('leaveFilterBtn').addEventListener('click', loadLeaves);
+document.getElementById('leaveExportBtn').addEventListener('click', async () => {
+  const mode = document.getElementById('leaveExportMode').value;
+  const params = new URLSearchParams();
+  if (mode === 'filter') {
+    const date = document.getElementById('leaveDateFilter').value;
+    const status = document.getElementById('leaveStatusFilter').value;
+    if (date) params.set('date', date);
+    if (status) params.set('status', status);
+  }
+  try {
+    const res = await fetch('/api/leaves/export?' + params.toString(), { headers: authHeaders() });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal membuat file export.'); return; }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : 'ijin-cuti.xlsx';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Gagal mengunduh: ' + e.message);
+  }
+});
 document.getElementById('leaveClearBtn').addEventListener('click', () => {
   document.getElementById('leaveDateFilter').value = '';
   document.getElementById('leaveStatusFilter').value = '';

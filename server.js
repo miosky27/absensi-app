@@ -1323,6 +1323,34 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { from, to, payroll });
     }
 
+    // Export Slip Gaji ke .xlsx — HANYA karyawan yang dipilih (dicentang) di admin UI.
+    if (pathName === '/api/payroll/export' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from dan to (YYYY-MM-DD) wajib diisi' });
+      const phonesParam = (url.searchParams.get('employees') || '').trim();
+      const selectedPhones = phonesParam ? phonesParam.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      if (selectedPhones.length === 0) return sendJSON(res, 400, { error: 'Pilih minimal satu karyawan untuk di-export' });
+      const selectedNames = new Set(config.employees.filter((e) => selectedPhones.includes(e.phone)).map((e) => e.name));
+
+      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
+      const payroll = computePayrollSummary(records, config, from, to).filter((p) => selectedNames.has(p.employee));
+
+      const headerRow = ['Nama', 'Hadir', 'Telat (kali)', 'OFF Lebih', 'Cuti', 'Lembur Awal (j)', 'Lembur Akhir (j)', 'Lembur Tambahan (j)', 'Kerajinan (Rp)', 'Potongan (Rp)', 'Kasbon (Rp)', 'Gaji Bersih (Rp)'];
+      const dataRows = payroll.map((p) => [
+        p.employee, p.hariHadir, p.terlambatKali, p.offBerlebih, p.hariCuti ?? 0,
+        p.lemburAwalJam, p.lemburAkhirJam, p.lemburTambahanJam,
+        p.kerajinanEligible ? p.kerajinan : 0, p.totalPotongan, p.potonganKasbon || 0, p.gajiBersih,
+      ]);
+      const xlsxBuffer = buildXlsx([{ name: 'Slip Gaji', rows: [headerRow, ...dataRows] }]);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="slip-gaji-${from}_${to}.xlsx"`,
+      });
+      return res.end(xlsxBuffer);
+    }
+
     // ---- Laporan untuk otomasi (dilindungi report key, bukan token admin) ----
     if (pathName === '/api/daily-report' && req.method === 'GET') {
       const key = url.searchParams.get('key');
@@ -1613,6 +1641,30 @@ const server = http.createServer(async (req, res) => {
       if (status) leaves = leaves.filter((l) => l.status === status);
       leaves.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return sendJSON(res, 200, { leaves });
+    }
+    // Export rekap Ijin/Cuti ke .xlsx. Tanpa param date/status = semua data ("Semua Data" di UI).
+    // Dengan date/status = sesuai filter yang lagi aktif ("Sesuai Filter" di UI).
+    if (pathName === '/api/leaves/export' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      let leaves = readJSON(LEAVES_FILE);
+      const date = url.searchParams.get('date');
+      const status = url.searchParams.get('status');
+      if (date) leaves = leaves.filter((l) => l.startDate <= date && date <= l.endDate);
+      if (status) leaves = leaves.filter((l) => l.status === status);
+      leaves.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+      const statusLabel = { pending: 'Pending', approved: 'Disetujui', rejected: 'Ditolak' };
+      const typeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
+      const headerRow = ['Nama', 'Jenis', 'Mulai', 'Selesai', 'Alasan', 'Status'];
+      const dataRows = leaves.map((l) => [
+        l.employee || '', typeLabel[l.type] || l.type || '', l.startDate || '', l.endDate || '', l.reason || '', statusLabel[l.status] || l.status || '',
+      ]);
+      const xlsxBuffer = buildXlsx([{ name: 'Ijin Cuti', rows: [headerRow, ...dataRows] }]);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="ijin-cuti${date ? '-' + date : ''}${status ? '-' + status : ''}.xlsx"`,
+      });
+      return res.end(xlsxBuffer);
     }
     // Admin: approve/reject pengajuan.
     if (pathName.startsWith('/api/leaves/') && pathName.endsWith('/approve') && req.method === 'POST') {
