@@ -1714,6 +1714,32 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // Backup seluruh data (semua file .json + foto absen + foto karyawan) dalam satu file .zip.
+    if (pathName === '/api/backup' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const backupFiles = [];
+      for (const f of fs.readdirSync(DATA_DIR)) {
+        const full = path.join(DATA_DIR, f);
+        if (f.endsWith('.json') && fs.statSync(full).isFile()) backupFiles.push({ name: f, data: fs.readFileSync(full) });
+      }
+      for (const dir of ['photos', 'employee-photos']) {
+        const d = path.join(DATA_DIR, dir);
+        if (!fs.existsSync(d)) continue;
+        for (const f of fs.readdirSync(d)) {
+          const full = path.join(d, f);
+          if (fs.statSync(full).isFile()) backupFiles.push({ name: `${dir}/${f}`, data: fs.readFileSync(full) });
+        }
+      }
+      const zipBuf = buildZipStore(backupFiles);
+      const tanggal = dateKeyJakarta(new Date().toISOString());
+      res.writeHead(200, {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="backup-absensi-${tanggal}.zip"`,
+        'Content-Length': zipBuf.length,
+      });
+      return res.end(zipBuf);
+    }
+
     if (pathName === '/api/config' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const { adminPassword, ...safeConfig } = config;

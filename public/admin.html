@@ -590,6 +590,12 @@
         <div class="field" style="margin-top:16px"><label>Ganti Email Admin (kosongkan jika tidak diubah)</label><input type="email" id="cfgEmail" placeholder="nama@email.com" /></div>
         <div class="field"><label>Ganti Password Admin (kosongkan jika tidak diubah)</label><input type="password" id="cfgPassword" /></div>
 
+        <div class="section-title" style="margin-top:28px">Backup Data</div>
+        <div class="hint">Unduh semua data absensi, gaji, kasbon, cuti/izin, dan foto dalam satu file .zip. Simpan di tempat aman (misalnya Google Drive) secara rutin.</div>
+        <div style="margin-top:10px">
+          <button class="btn secondary" id="downloadBackupBtn" type="button">Unduh Backup</button>
+        </div>
+
         <div style="margin-top:16px">
           <button class="btn" id="saveCfgBtn">Simpan Pengaturan</button>
           <span id="saveMsg" style="margin-left:10px;font-size:13px;color:#137333"></span>
@@ -1365,6 +1371,24 @@ document.getElementById('kasbonSelectAll').addEventListener('change', (e) => {
   const bulanEl = document.getElementById('kasbonExportBulan');
   bulanEl.value = new Date().toISOString().slice(0, 7);
 })();
+document.getElementById('downloadBackupBtn').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/backup', { headers: authHeaders() });
+    if (!res.ok) { alert('Gagal membuat backup.'); return; }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : 'backup-absensi.zip';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Gagal membuat backup: ' + e.message);
+  }
+});
+
 document.getElementById('exportKasbonBtn').addEventListener('click', async () => {
   const bulan = document.getElementById('kasbonExportBulan').value;
   if (!bulan) { alert('Pilih bulan laporan dulu.'); return; }
