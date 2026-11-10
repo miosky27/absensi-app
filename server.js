@@ -268,6 +268,61 @@ function computePayrollDailyByEmployeeDate(records, toleransiMenit) {
   return result;
 }
 
+// Total menit bekerja (shift biasa + lembur tambahan) per karyawan per tanggal.
+// Dipakai untuk cek aturan "potongan keterlambatan tidak berlaku kalau H-1 kerja >= 12 jam".
+function computeWorkedMinutesByEmployeeDate(records) {
+  const grouped = {};
+  for (const r of records) {
+    const key = r.employee + '|' + r.dateKey;
+    if (!grouped[key]) grouped[key] = { masuk: null, keluar: null, lemburMasuk: null, lemburKeluar: null };
+    const g = grouped[key];
+    const menit = timeToMinutes(r.timeHHMM);
+    if (r.type === 'masuk') { if (g.masuk === null || menit < g.masuk) g.masuk = menit; }
+    else if (r.type === 'keluar') { if (g.keluar === null || menit > g.keluar) g.keluar = menit; }
+    else if (r.type === 'lembur_masuk') { if (g.lemburMasuk === null || menit < g.lemburMasuk) g.lemburMasuk = menit; }
+    else if (r.type === 'lembur_keluar') { if (g.lemburKeluar === null || menit > g.lemburKeluar) g.lemburKeluar = menit; }
+  }
+  const result = {};
+  for (const key of Object.keys(grouped)) {
+    const g = grouped[key];
+    let total = 0;
+    if (g.masuk !== null && g.keluar !== null && g.keluar > g.masuk) total += (g.keluar - g.masuk);
+    if (g.lemburMasuk !== null && g.lemburKeluar !== null && g.lemburKeluar > g.lemburMasuk) total += (g.lemburKeluar - g.lemburMasuk);
+    result[key] = total;
+  }
+  return result;
+}
+
+function shiftDateKey(dateKey, deltaDays) {
+  const d = new Date(dateKey + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+}
+
+// Daftar tanggal (urut naik) dalam periode [from, to] di mana karyawan tidak hadir dan
+// tidak sedang cuti/izin yang disetujui. Dipakai untuk aturan potongan alpa (Task #37):
+// hari tidak masuk yang jatuh SEBELUM tanggal masuk kerja karyawan hanya kena 1x upah harian.
+function computeAbsentDates(employeeName, from, to, presentDateSet, leaves) {
+  const dates = [];
+  let cur = new Date(from + 'T00:00:00Z');
+  const end = new Date(to + 'T00:00:00Z');
+  while (cur <= end) {
+    dates.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  const leaveSet = new Set();
+  for (const l of leaves) {
+    if (l.employee !== employeeName || l.status !== 'approved') continue;
+    const start = l.startDate > from ? l.startDate : from;
+    const end2 = l.endDate < to ? l.endDate : to;
+    if (start > end2) continue;
+    let d2 = new Date(start + 'T00:00:00Z');
+    const endD2 = new Date(end2 + 'T00:00:00Z');
+    while (d2 <= endD2) { leaveSet.add(d2.toISOString().slice(0, 10)); d2.setUTCDate(d2.getUTCDate() + 1); }
+  }
+  return dates.filter((dk) => !presentDateSet.has(dk) && !leaveSet.has(dk));
+}
+
 function countDaysInclusive(from, to) {
   const a = new Date(from + 'T00:00:00Z');
   const b = new Date(to + 'T00:00:00Z');
@@ -328,10 +383,13 @@ function computePayrollSummary(records, config, from, to) {
   const lemburTambahan = computeLemburTambahanByEmployeeDate(records);
   const cutiDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE), from, to);
   const kasbonPotongan = sumKasbonPaymentsByEmployee(readJSON(KASBON_PAYMENTS_FILE), from, to);
+  const leaves = readJSON(LEAVES_FILE);
+  // Total menit kerja per employee|tanggal, dipakai buat cek "kerja >=12 jam di H-1" (Task #36).
+  const workedMinutesMap = computeWorkedMinutesByEmployeeDate(records);
 
   const makeEmpty = (employee) => ({
-    employee, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatKali: 0,
-    lemburAkhirMenit: 0, pulangCepatMenit: 0, lemburTambahanMenit: 0,
+    employee, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatMenitPotongan: 0, terlambatKali: 0,
+    lemburAkhirMenit: 0, pulangCepatMenit: 0, lemburTambahanMenit: 0, presentDates: new Set(),
   });
 
   const byEmployee = {};
@@ -339,15 +397,23 @@ function computePayrollSummary(records, config, from, to) {
   for (const emp of config.employees) empByName[emp.name] = emp;
 
   for (const key of Object.keys(daily)) {
-    const [employee] = key.split('|');
+    const [employee, dateKey] = key.split('|');
     if (!byEmployee[employee]) byEmployee[employee] = makeEmpty(employee);
     const e = byEmployee[employee];
     const d = daily[key];
-    if (d.hadir) e.hariHadir += 1;
+    if (d.hadir) { e.hariHadir += 1; e.presentDates.add(dateKey); }
     e.lemburAwalMenit += d.lemburAwalMenit;
     e.lemburAkhirMenit += d.lemburAkhirMenit;
     e.pulangCepatMenit += d.pulangCepatMenit;
-    if (d.terlambatMenit > 0) { e.terlambatMenit += d.terlambatMenit; e.terlambatKali += 1; }
+    if (d.terlambatMenit > 0) {
+      e.terlambatMenit += d.terlambatMenit;
+      e.terlambatKali += 1;
+      // Task #36: potongan keterlambatan tidak berlaku kalau H-1 karyawan kerja >= 12 jam.
+      const prevKey = employee + '|' + shiftDateKey(dateKey, -1);
+      const prevWorkedMenit = workedMinutesMap[prevKey] || 0;
+      const excusedByOvertimeH1 = prevWorkedMenit >= 12 * 60;
+      if (!excusedByOvertimeH1) e.terlambatMenitPotongan += d.terlambatMenit;
+    }
   }
   // Jam lembur tambahan (tombol Lembur Masuk/Pulang) bisa ada pada tanggal tanpa absen
   // shift biasa sama sekali, jadi digabung terpisah dari grup `daily` di atas.
@@ -367,9 +433,16 @@ function computePayrollSummary(records, config, from, to) {
     const gajiHarian = gajiPokok / 30;
     const upahJam = Number(emp.upahLemburPerJam) > 0 ? Number(emp.upahLemburPerJam) : gajiPokok / 240;
 
+    // Task #37: hari tidak masuk tanpa alasan yang jatuh SEBELUM tanggal masuk kerja karyawan
+    // hanya kena potongan 1x upah harian (bukan pengaliPotonganOff / biasanya 2x), karena
+    // karyawan memang belum mulai bekerja saat itu. Kuota OFF gratis (jatahOffPerPeriode)
+    // dipakai dulu buat hari2 absen yang PALING AWAL secara kronologis.
+    const absentDates = computeAbsentDates(e.employee, from, to, e.presentDates, leaves);
+    const hariTidakHadir = absentDates.length;
+    const jatah = config.jatahOffPerPeriode || 0;
+    const offBerlebih = Math.max(0, hariTidakHadir - jatah);
+    const chargedAbsentDates = offBerlebih > 0 ? absentDates.slice(hariTidakHadir - offBerlebih) : [];
     const hariCuti = cutiDisetujui[e.employee] || 0;
-    const hariTidakHadir = Math.max(0, totalHariPeriode - e.hariHadir - hariCuti);
-    const offBerlebih = Math.max(0, hariTidakHadir - (config.jatahOffPerPeriode || 0));
     const potonganKasbon = kasbonPotongan[e.employee] || 0;
 
     const uangMakan = e.hariHadir * (config.uangMakanPerHari || 0);
@@ -378,6 +451,7 @@ function computePayrollSummary(records, config, from, to) {
     const lemburAkhirJam = Math.round((e.lemburAkhirMenit / 60) * 100) / 100;
     const pulangCepatJam = Math.round((e.pulangCepatMenit / 60) * 100) / 100;
     const terlambatJam = Math.round((e.terlambatMenit / 60) * 100) / 100;
+    const terlambatJamPotongan = Math.round((e.terlambatMenitPotongan / 60) * 100) / 100;
     const lemburTambahanJam = Math.round((e.lemburTambahanMenit / 60) * 100) / 100;
 
     const lemburAwalRp = Math.round(lemburAwalJam * upahJam);
@@ -388,8 +462,12 @@ function computePayrollSummary(records, config, from, to) {
     const kerajinanEligible = offBerlebih === 0 && e.terlambatKali <= (config.maksTerlambatUntukKerajinan ?? 2);
     const kerajinan = kerajinanEligible ? Math.round(totalPendapatan * 0.1) : 0;
 
-    const potonganOff = Math.round(offBerlebih * gajiHarian * (config.pengaliPotonganOff || 0));
-    const potonganTerlambat = Math.round(terlambatJam * upahJam);
+    const tanggalMasuk = emp.tanggalMasuk || null;
+    const potonganOff = Math.round(chargedAbsentDates.reduce((sum, dk) => {
+      const pengali = (tanggalMasuk && dk < tanggalMasuk) ? 1 : (config.pengaliPotonganOff || 0);
+      return sum + gajiHarian * pengali;
+    }, 0));
+    const potonganTerlambat = Math.round(terlambatJamPotongan * upahJam);
     const potonganPulangCepat = Math.round(pulangCepatJam * upahJam);
     const totalPotongan = potonganOff + potonganTerlambat + potonganPulangCepat + potonganKasbon;
 
