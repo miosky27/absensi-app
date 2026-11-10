@@ -91,6 +91,18 @@
   .topheader-right .icon { font-size:16px; opacity:.9; cursor:pointer; }
   .topheader-right .profile { display:flex; align-items:center; gap:8px; cursor:pointer; }
   .topheader-right .profile .avatar { width:28px;height:28px;border-radius:50%;background:#fff;color:#702464;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px; }
+  .notif-wrap { position:relative; }
+  .notif-badge { position:absolute; top:-6px; right:-8px; background:#e8453c; color:#fff; font-size:10px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  .notif-dropdown { display:none; position:absolute; top:34px; right:-10px; width:320px; max-height:380px; overflow-y:auto; background:#fff; color:#222; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:100; }
+  .notif-dropdown.open { display:block; }
+  .notif-dropdown-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #eee; font-weight:700; font-size:13px; }
+  .notif-dropdown-head a { font-weight:400; font-size:12px; color:#702464; cursor:pointer; text-decoration:none; }
+  .notif-item { padding:10px 14px; border-bottom:1px solid #f3f3f3; font-size:13px; cursor:pointer; }
+  .notif-item:last-child { border-bottom:none; }
+  .notif-item.unread { background:#faf3f8; }
+  .notif-item .notif-msg { color:#222; line-height:1.4; }
+  .notif-item .notif-time { color:#999; font-size:11px; margin-top:3px; }
+  .notif-empty { padding:24px 14px; text-align:center; color:#999; font-size:13px; }
 
   /* ---- App shell: sidebar kiri (desktop) / bottom nav (mobile) ---- */
   .app-shell { display:flex; min-height:calc(100vh - 56px); }
@@ -146,7 +158,16 @@
       <div class="logo-circle"><img src="/logo.png" alt="logo" /></div>
     </div>
     <div class="topheader-right">
-      <span class="icon">🔔</span>
+      <div class="notif-wrap">
+        <span class="icon" id="notifBellBtn">🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span></span>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-dropdown-head">
+            <span>Notifikasi</span>
+            <a id="notifMarkAllBtn">Tandai semua dibaca</a>
+          </div>
+          <div id="notifList"></div>
+        </div>
+      </div>
       <div class="profile"><div class="avatar">AD</div><span>Admin ▾</span></div>
     </div>
   </div>
@@ -496,6 +517,8 @@ function showApp() {
   loadConfig().then(loadDaily);
   loadMonthly();
   loadDashboard();
+  loadAdminNotifications();
+  if (!window.__notifPoll) window.__notifPoll = setInterval(loadAdminNotifications, 30000);
 }
 
 // ---- Navigasi sidebar ----
@@ -796,6 +819,81 @@ function formatRupiah(n) {
   const sign = n < 0 ? '-' : '';
   return sign + 'Rp' + Math.abs(Math.round(n)).toLocaleString('id-ID');
 }
+
+// ---- Notifikasi Admin (bell icon) ----
+function timeAgo(iso) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'baru saja';
+  if (min < 60) return min + ' menit lalu';
+  const jam = Math.floor(min / 60);
+  if (jam < 24) return jam + ' jam lalu';
+  const hari = Math.floor(jam / 24);
+  return hari + ' hari lalu';
+}
+
+let lastAdminNotifications = [];
+async function loadAdminNotifications() {
+  try {
+    const res = await fetch('/api/admin-notifications', { headers: authHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    lastAdminNotifications = data.notifications || [];
+    const badge = document.getElementById('notifBadge');
+    if (data.unreadCount > 0) {
+      badge.style.display = 'flex';
+      badge.textContent = data.unreadCount > 9 ? '9+' : String(data.unreadCount);
+    } else {
+      badge.style.display = 'none';
+    }
+    renderAdminNotifications();
+  } catch (e) { /* diam-diam gagal, coba lagi di polling berikutnya */ }
+}
+function renderAdminNotifications() {
+  const list = document.getElementById('notifList');
+  if (lastAdminNotifications.length === 0) {
+    list.innerHTML = '<div class="notif-empty">Belum ada notifikasi.</div>';
+    return;
+  }
+  list.innerHTML = lastAdminNotifications.map((n) => `
+    <div class="notif-item ${n.read ? '' : 'unread'}" data-notifid="${n.id}">
+      <div class="notif-msg">${n.message}</div>
+      <div class="notif-time">${timeAgo(n.createdAt)}</div>
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-notifid]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const id = el.dataset.notifid;
+      const n = lastAdminNotifications.find((x) => x.id === id);
+      if (n && !n.read) {
+        n.read = true;
+        el.classList.remove('unread');
+        await fetch(`/api/admin-notifications/${id}/read`, { method: 'POST', headers: authHeaders() });
+        const unread = lastAdminNotifications.filter((x) => !x.read).length;
+        const badge = document.getElementById('notifBadge');
+        if (unread > 0) { badge.style.display = 'flex'; badge.textContent = unread > 9 ? '9+' : String(unread); }
+        else { badge.style.display = 'none'; }
+      }
+      if (n && n.type === 'leave_new') {
+        document.querySelector('.side-item[data-page="ijincuti"]').click();
+      } else if (n && n.type === 'kasbon_new') {
+        document.querySelector('.side-item[data-page="kasbon"]').click();
+      }
+      document.getElementById('notifDropdown').classList.remove('open');
+    });
+  });
+}
+document.getElementById('notifBellBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('notifDropdown').classList.toggle('open');
+});
+document.getElementById('notifDropdown').addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', () => document.getElementById('notifDropdown').classList.remove('open'));
+document.getElementById('notifMarkAllBtn').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  await fetch('/api/admin-notifications/read-all', { method: 'POST', headers: authHeaders() });
+  loadAdminNotifications();
+});
 
 let lastPayroll = [];
 

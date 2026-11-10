@@ -21,6 +21,7 @@ const LEAVES_FILE = path.join(DATA_DIR, 'leaves.json'); // pengajuan izin/cuti
 const KASBON_FILE = path.join(DATA_DIR, 'kasbon.json'); // pinjaman karyawan
 const KASBON_PAYMENTS_FILE = path.join(DATA_DIR, 'kasbon_payments.json'); // cicilan/pelunasan kasbon
 const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json'); // pemberitahuan untuk karyawan (status cuti/kasbon dll)
+const ADMIN_NOTIFICATIONS_FILE = path.join(DATA_DIR, 'admin_notifications.json'); // pemberitahuan untuk admin (pengajuan cuti/kasbon baru)
 
 const PORT = process.env.PORT || 3000;
 
@@ -36,6 +37,7 @@ ensureFile(LEAVES_FILE, []);
 ensureFile(KASBON_FILE, []);
 ensureFile(KASBON_PAYMENTS_FILE, []);
 ensureFile(NOTIFICATIONS_FILE, []);
+ensureFile(ADMIN_NOTIFICATIONS_FILE, []);
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
   // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
@@ -730,6 +732,17 @@ function addNotification(phone, message, type) {
     createdAt: new Date().toISOString(),
   });
   writeJSON(NOTIFICATIONS_FILE, notifications);
+}
+
+// Buat notifikasi baru untuk admin (dipakai saat karyawan ajukan cuti/ijin atau kasbon baru).
+function addAdminNotification(message, type, refId) {
+  const notifications = readJSON(ADMIN_NOTIFICATIONS_FILE);
+  notifications.push({
+    id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    message, type: type || 'info', refId: refId || null, read: false,
+    createdAt: new Date().toISOString(),
+  });
+  writeJSON(ADMIN_NOTIFICATIONS_FILE, notifications);
 }
 
 // ---------- Static file serving ----------
@@ -1622,6 +1635,8 @@ const server = http.createServer(async (req, res) => {
       };
       leaves.push(entry);
       writeJSON(LEAVES_FILE, leaves);
+      const jenisLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
+      addAdminNotification(`${emp.name} mengajukan ${jenisLabel[type] || type} (${startDate} s.d. ${endDate})`, 'leave_new', entry.id);
       return sendJSON(res, 200, { ok: true, leave: entry });
     }
     // Riwayat pengajuan izin/cuti milik karyawan sendiri.
@@ -1665,6 +1680,32 @@ const server = http.createServer(async (req, res) => {
         'Content-Disposition': `attachment; filename="ijin-cuti${date ? '-' + date : ''}${status ? '-' + status : ''}.xlsx"`,
       });
       return res.end(xlsxBuffer);
+    }
+    // Admin: daftar notifikasi admin (pengajuan cuti/ijin & kasbon baru) + jumlah belum dibaca.
+    if (pathName === '/api/admin-notifications' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const notifications = readJSON(ADMIN_NOTIFICATIONS_FILE).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      const unreadCount = notifications.filter((n) => !n.read).length;
+      return sendJSON(res, 200, { notifications, unreadCount });
+    }
+    // Admin: tandai satu notifikasi admin sudah dibaca.
+    if (pathName.startsWith('/api/admin-notifications/') && pathName.endsWith('/read') && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const notifications = readJSON(ADMIN_NOTIFICATIONS_FILE);
+      const n = notifications.find((x) => x.id === id);
+      if (!n) return sendJSON(res, 404, { error: 'Notifikasi tidak ditemukan' });
+      n.read = true;
+      writeJSON(ADMIN_NOTIFICATIONS_FILE, notifications);
+      return sendJSON(res, 200, { ok: true });
+    }
+    // Admin: tandai semua notifikasi admin sudah dibaca.
+    if (pathName === '/api/admin-notifications/read-all' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const notifications = readJSON(ADMIN_NOTIFICATIONS_FILE);
+      notifications.forEach((n) => { n.read = true; });
+      writeJSON(ADMIN_NOTIFICATIONS_FILE, notifications);
+      return sendJSON(res, 200, { ok: true });
     }
     // Admin: approve/reject pengajuan.
     if (pathName.startsWith('/api/leaves/') && pathName.endsWith('/approve') && req.method === 'POST') {
@@ -1715,6 +1756,7 @@ const server = http.createServer(async (req, res) => {
       };
       kasbonList.push(entry);
       writeJSON(KASBON_FILE, kasbonList);
+      addAdminNotification(`${emp.name} mengajukan kasbon ${jenis === 'cicil' ? 'cicil' : 'potong lunas'} sebesar Rp${jml.toLocaleString('id-ID')}`, 'kasbon_new', entry.id);
       return sendJSON(res, 200, { ok: true, kasbon: entry });
     }
     // Riwayat kasbon milik karyawan sendiri + sisa.
