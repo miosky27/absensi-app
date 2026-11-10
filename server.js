@@ -2189,22 +2189,23 @@ const server = http.createServer(async (req, res) => {
       const positionByName = {};
       config.employees.forEach((e) => { positionByName[e.name] = e.position || ''; });
 
-      // "Terbaru" (Task #54): bukan cuma hari ini, tapi 15/10 data PALING BARU
-      // secara keseluruhan (diurutkan tanggal+jam / createdAt terbaru duluan).
+      // "Terbaru" (Task #54): bukan cuma hari ini, tapi data PALING BARU secara
+      // keseluruhan (diurutkan tanggal+jam terbaru duluan). Ambil 50 dulu, ditampilkan
+      // 5 per halaman di frontend dengan tombol Sebelumnya/Selanjutnya.
       const recentRecords = readJSON(RECORDS_FILE)
         .sort((a, b) => (a.dateKey + a.timeHHMM < b.dateKey + b.timeHHMM ? 1 : -1))
-        .slice(0, 15)
+        .slice(0, 50)
         .map((r) => ({
           employee: r.employee, position: positionByName[r.employee] || '', type: r.type,
           timeHHMM: r.timeHHMM, nearestLocation: r.nearestLocation,
         }));
       const kasbonTerbaru = readJSON(KASBON_FILE)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-        .slice(0, 10)
+        .slice(0, 50)
         .map((k) => ({ employee: k.employee, jenis: k.jenis, jumlah: k.jumlah, status: k.status }));
       const leaveTerbaru = readJSON(LEAVES_FILE)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-        .slice(0, 10)
+        .slice(0, 50)
         .map((l) => ({ employee: l.employee, type: l.type, startDate: l.startDate, endDate: l.endDate, status: l.status }));
 
       return sendJSON(res, 200, {

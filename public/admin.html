@@ -139,6 +139,8 @@
   .icon-btn-edit:hover { background:#e3f5e9; }
   .icon-btn-delete { color:#c5221f; }
   .icon-btn-delete:hover { background:#fbe4e3; }
+  .icon-pager-btn { display:inline-flex; align-items:center; justify-content:center; padding:6px 8px; }
+  .icon-pager-btn:disabled { opacity:.4; cursor:default; }
   .filter-row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:flex-end; }
   .filter-row .field { margin-bottom:0; min-width:140px; }
   table.slip-payslip { border-collapse:collapse; margin-top:14px; font-size:13px; width:100%; max-width:720px; }
@@ -215,6 +217,11 @@
             </table>
           </div>
           <div class="hint" id="dashRecentEmpty"></div>
+          <div id="dashRecentPager" style="display:none;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px">
+            <span id="dashRecentPageInfo" style="font-size:12px;color:#777"></span>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dashRecentPrevBtn" title="Sebelumnya" aria-label="Sebelumnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dashRecentNextBtn" title="Selanjutnya" aria-label="Selanjutnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
         </div>
         <div class="card">
           <div class="section-title" style="margin-top:0">Pengajuan Kasbon Terbaru</div>
@@ -225,6 +232,11 @@
             </table>
           </div>
           <div class="hint" id="dashKasbonEmpty"></div>
+          <div id="dashKasbonPager" style="display:none;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px">
+            <span id="dashKasbonPageInfo" style="font-size:12px;color:#777"></span>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dashKasbonPrevBtn" title="Sebelumnya" aria-label="Sebelumnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dashKasbonNextBtn" title="Selanjutnya" aria-label="Selanjutnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
         </div>
         <div class="card">
           <div class="section-title" style="margin-top:0">Pengajuan Cuti/Izin Terbaru</div>
@@ -235,6 +247,11 @@
             </table>
           </div>
           <div class="hint" id="dashLeaveEmpty"></div>
+          <div id="dashLeavePager" style="display:none;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px">
+            <span id="dashLeavePageInfo" style="font-size:12px;color:#777"></span>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dashLeavePrevBtn" title="Sebelumnya" aria-label="Sebelumnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dashLeaveNextBtn" title="Selanjutnya" aria-label="Selanjutnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
         </div>
       </div>
 
@@ -1220,6 +1237,48 @@ async function loadMonthly() {
 }
 
 // ---- Dashboard ----
+// 3 section "Terbaru" (Absensi/Kasbon/Cuti) dipaginasi 5 per halaman (sebelumnya nampilin
+// semua sekaligus, kepanjangan). Satu paginator generic dipakai utk ketiganya.
+function makeDashPaginator(key, rowHtml, emptyText) {
+  const state = { all: [], page: 0 };
+  const pageSize = 5;
+  function render() {
+    const tbody = document.querySelector(`#dash${key}Table tbody`);
+    tbody.innerHTML = '';
+    const totalPages = Math.max(1, Math.ceil(state.all.length / pageSize));
+    state.page = Math.min(state.page, totalPages - 1);
+    const start = state.page * pageSize;
+    state.all.slice(start, start + pageSize).forEach((item) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = rowHtml(item);
+      tbody.appendChild(tr);
+    });
+    document.getElementById(`dash${key}Empty`).textContent = state.all.length === 0 ? emptyText : '';
+    const pager = document.getElementById(`dash${key}Pager`);
+    pager.style.display = state.all.length > pageSize ? 'flex' : 'none';
+    document.getElementById(`dash${key}PageInfo`).textContent = `Halaman ${state.page + 1} dari ${totalPages}`;
+    document.getElementById(`dash${key}PrevBtn`).disabled = state.page === 0;
+    document.getElementById(`dash${key}NextBtn`).disabled = state.page >= totalPages - 1;
+  }
+  document.getElementById(`dash${key}PrevBtn`).addEventListener('click', () => { state.page--; render(); });
+  document.getElementById(`dash${key}NextBtn`).addEventListener('click', () => { state.page++; render(); });
+  return {
+    setItems(items) { state.all = items; state.page = 0; render(); },
+  };
+}
+
+const dashRecentTypeLabel = { masuk: 'Masuk', keluar: 'Pulang', lembur_masuk: 'Lembur Masuk', lembur_keluar: 'Lembur Pulang' };
+const dashLeaveTypeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
+const dashRecentPaginator = makeDashPaginator('Recent',
+  (r) => `<td>${r.employee}</td><td>${r.position || '—'}</td><td>${dashRecentTypeLabel[r.type] || r.type}</td><td>${r.timeHHMM}</td><td>${r.nearestLocation || '—'}</td>`,
+  'Belum ada data absensi.');
+const dashKasbonPaginator = makeDashPaginator('Kasbon',
+  (k) => `<td>${k.employee}</td><td>${k.jenis}</td><td>${formatRupiah(k.jumlah)}</td><td><span class="badge ${k.status}">${k.status}</span></td>`,
+  'Belum ada pengajuan kasbon.');
+const dashLeavePaginator = makeDashPaginator('Leave',
+  (l) => `<td>${l.employee}</td><td>${dashLeaveTypeLabel[l.type] || l.type}</td><td>${formatTanggalSlash(l.startDate)} - ${formatTanggalSlash(l.endDate)}</td><td><span class="badge ${l.status}">${l.status}</span></td>`,
+  'Belum ada pengajuan cuti/izin.');
+
 async function loadDashboard() {
   const res = await fetch('/api/dashboard-summary', { headers: authHeaders() });
   if (!res.ok) return;
@@ -1229,34 +1288,9 @@ async function loadDashboard() {
     <div class="summary-card sc-ontime"><div class="num">${d.karyawanMasuk}</div><div class="lbl">Sudah Absen Masuk</div></div>
     <div class="summary-card sc-overtime"><div class="num">${d.karyawanCuti}</div><div class="lbl">Cuti/Izin Hari Ini</div></div>
   `;
-  const tbody = document.querySelector('#dashRecentTable tbody');
-  tbody.innerHTML = '';
-  const typeLabel = { masuk: 'Masuk', keluar: 'Pulang', lembur_masuk: 'Lembur Masuk', lembur_keluar: 'Lembur Pulang' };
-  d.recentRecords.forEach((r) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.employee}</td><td>${r.position || '—'}</td><td>${typeLabel[r.type] || r.type}</td><td>${r.timeHHMM}</td><td>${r.nearestLocation || '—'}</td>`;
-    tbody.appendChild(tr);
-  });
-  document.getElementById('dashRecentEmpty').textContent = d.recentRecords.length === 0 ? 'Belum ada data absensi.' : '';
-
-  const ktbody = document.querySelector('#dashKasbonTable tbody');
-  ktbody.innerHTML = '';
-  d.kasbonTerbaru.forEach((k) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${k.employee}</td><td>${k.jenis}</td><td>${formatRupiah(k.jumlah)}</td><td><span class="badge ${k.status}">${k.status}</span></td>`;
-    ktbody.appendChild(tr);
-  });
-  document.getElementById('dashKasbonEmpty').textContent = d.kasbonTerbaru.length === 0 ? 'Belum ada pengajuan kasbon.' : '';
-
-  const ltbody = document.querySelector('#dashLeaveTable tbody');
-  ltbody.innerHTML = '';
-  const leaveTypeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
-  d.leaveTerbaru.forEach((l) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${l.employee}</td><td>${leaveTypeLabel[l.type] || l.type}</td><td>${formatTanggalSlash(l.startDate)} - ${formatTanggalSlash(l.endDate)}</td><td><span class="badge ${l.status}">${l.status}</span></td>`;
-    ltbody.appendChild(tr);
-  });
-  document.getElementById('dashLeaveEmpty').textContent = d.leaveTerbaru.length === 0 ? 'Belum ada pengajuan cuti/izin.' : '';
+  dashRecentPaginator.setItems(d.recentRecords);
+  dashKasbonPaginator.setItems(d.kasbonTerbaru);
+  dashLeavePaginator.setItems(d.leaveTerbaru);
 }
 
 // ---- Izin/Cuti ----
