@@ -964,7 +964,7 @@ async function loadConfig() {
   currentWorkStart = cfg.workStartTime || '08:00';
   currentToleransi = cfg.toleransiTerlambatMenit ?? 15;
   currentEmployees = cfg.employees || [];
-  currentLocations = cfg.locations && cfg.locations.length ? cfg.locations : [{ name: '', lat: '', lng: '', radiusMeters: 10, shifts: [] }];
+  currentLocations = cfg.locations && cfg.locations.length ? cfg.locations : [{ name: '', lat: '', lng: '', radiusMeters: 10, maxDistanceMeters: 50, shifts: [] }];
   currentLocations.forEach((loc) => { if (!Array.isArray(loc.shifts)) loc.shifts = []; });
   renderEmpList();
   renderLocList();
@@ -995,9 +995,15 @@ function renderLocList() {
       <input type="text" placeholder="Latitude" value="${loc.lat ?? ''}" data-idx="${i}" data-field="lat" />
       <input type="text" placeholder="Longitude" value="${loc.lng ?? ''}" data-idx="${i}" data-field="lng" />
       <input type="text" placeholder="Radius (m)" value="${loc.radiusMeters ?? 10}" data-idx="${i}" data-field="radiusMeters" />
+      <input type="text" placeholder="Jarak Maksimal (m)" value="${loc.maxDistanceMeters ?? 50}" data-idx="${i}" data-field="maxDistanceMeters" />
       <button class="btn secondary" type="button" data-removeloc="${i}">Hapus Lokasi</button>
     `;
     box.appendChild(row);
+    const hintRow = document.createElement('div');
+    hintRow.className = 'hint';
+    hintRow.style.cssText = 'margin-top:4px';
+    hintRow.textContent = 'Radius = di luar ini ditandai "di luar radius" tapi tetap diterima. Jarak Maksimal = lebih dari ini, absen DITOLAK otomatis.';
+    box.appendChild(hintRow);
 
     const shiftWrap = document.createElement('div');
     shiftWrap.style.cssText = 'margin-top:8px;padding-left:4px';
@@ -1033,7 +1039,7 @@ function renderLocList() {
   container.querySelectorAll('input[data-idx]').forEach((inp) => {
     inp.addEventListener('input', () => {
       const field = inp.dataset.field;
-      const val = (field === 'lat' || field === 'lng' || field === 'radiusMeters') ? parseFloat(inp.value) : inp.value;
+      const val = (field === 'lat' || field === 'lng' || field === 'radiusMeters' || field === 'maxDistanceMeters') ? parseFloat(inp.value) : inp.value;
       currentLocations[inp.dataset.idx][field] = val;
     });
   });
@@ -1059,7 +1065,7 @@ function renderLocList() {
 }
 
 document.getElementById('addLocBtn').addEventListener('click', () => {
-  currentLocations.push({ name: '', lat: '', lng: '', radiusMeters: 10, shifts: [] });
+  currentLocations.push({ name: '', lat: '', lng: '', radiusMeters: 10, maxDistanceMeters: 50, shifts: [] });
   renderLocList();
 });
 

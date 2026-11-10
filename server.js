@@ -42,7 +42,7 @@ ensureFile(CONFIG_FILE, {
   locations: [
     {
       name: "Yogya Jatibarang",
-      lat: -6.200000, lng: 108.316666, radiusMeters: 10,
+      lat: -6.200000, lng: 108.316666, radiusMeters: 10, maxDistanceMeters: 50,
       shifts: [
         { name: "Shift 1", startTime: "08:30", endTime: "16:30" },
         { name: "Shift 2", startTime: "12:30", endTime: "20:30" },
@@ -51,7 +51,7 @@ ensureFile(CONFIG_FILE, {
     },
     {
       name: "Yomart Karangampel",
-      lat: -6.400000, lng: 108.416666, radiusMeters: 10,
+      lat: -6.400000, lng: 108.416666, radiusMeters: 10, maxDistanceMeters: 50,
       shifts: [
         { name: "Shift 1", startTime: "07:30", endTime: "15:30" },
       ],
@@ -98,6 +98,8 @@ function migrateConfig(config) {
   let changed = false;
   for (const loc of config.locations) {
     if (!Array.isArray(loc.shifts)) { loc.shifts = []; changed = true; }
+    // Batas jarak maksimal (Task #38): lebih dari ini, absen DITOLAK (bukan cuma ditandai).
+    if (loc.maxDistanceMeters === undefined) { loc.maxDistanceMeters = 50; changed = true; }
   }
   // Karyawan lama (sebelum fitur foto/No ID/jabatan) belum punya field-field ini.
   if (!Array.isArray(config.employees)) config.employees = [];
@@ -498,7 +500,9 @@ function nearestLocation(lat, lng, locations) {
         name: loc.name,
         distanceMeters: d,
         radiusMeters: loc.radiusMeters,
+        maxDistanceMeters: loc.maxDistanceMeters,
         withinRadius: d <= loc.radiusMeters,
+        melebihiJarakMaksimal: typeof loc.maxDistanceMeters === 'number' && d > loc.maxDistanceMeters,
         shifts: loc.shifts || [],
       };
     }
@@ -956,6 +960,8 @@ const server = http.createServer(async (req, res) => {
         name: nearest.name,
         distanceMeters: Math.round(nearest.distanceMeters),
         withinRadius: nearest.withinRadius,
+        maxDistanceMeters: nearest.maxDistanceMeters,
+        melebihiJarakMaksimal: nearest.melebihiJarakMaksimal,
         shifts: nearest.shifts,
       });
     }
@@ -994,6 +1000,14 @@ const server = http.createServer(async (req, res) => {
       }
       const nearest = nearestLocation(lat, lng, config.locations);
       const withinRadius = nearest.withinRadius;
+
+      // Task #38: batas jarak maksimal (hard limit) — kalau lebih jauh dari ini, absen DITOLAK
+      // sepenuhnya (bukan cuma ditandai "di luar radius" seperti sebelumnya).
+      if (nearest.melebihiJarakMaksimal) {
+        return sendJSON(res, 400, {
+          error: `Lokasi kamu terlalu jauh dari ${nearest.name} (jarak ${Math.round(nearest.distanceMeters)} m, maksimal ${nearest.maxDistanceMeters} m). Absen tidak bisa disimpan, pastikan kamu berada dekat lokasi kerja.`,
+        });
+      }
 
       // Shift wajib dipilih saat absen masuk reguler; dicocokkan ke daftar shift lokasi terdekat.
       // Lembur Masuk/Lembur Pulang tidak terikat jadwal shift ataupun batasan waktu.

@@ -702,8 +702,10 @@ async function silentDistanceCheck() {
         const data = await res.json();
         if (!res.ok) return;
         const within = data.withinRadius;
-        distEl.className = 'presensi-distance ' + (within ? 'ok' : 'bad');
-        distEl.textContent = `${data.name}: ${Math.round(data.distanceMeters)} m ${within ? '(dalam radius)' : '(di luar radius)'}`;
+        distEl.className = 'presensi-distance ' + (data.melebihiJarakMaksimal ? 'bad' : (within ? 'ok' : 'bad'));
+        distEl.textContent = data.melebihiJarakMaksimal
+          ? `${data.name}: ${Math.round(data.distanceMeters)} m (terlalu jauh, maks ${data.maxDistanceMeters} m — absen akan ditolak)`
+          : `${data.name}: ${Math.round(data.distanceMeters)} m ${within ? '(dalam radius)' : '(di luar radius)'}`;
       } catch (e) { /* diam-diam gagal, biarkan label default */ }
     }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 });
   } catch (e) { /* Permissions API tidak didukung — biarkan label default */ }
