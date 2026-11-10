@@ -479,17 +479,25 @@ function computePayrollSummary(records, config, from, to) {
 
     // Task #37: hari tidak masuk tanpa alasan yang jatuh SEBELUM tanggal masuk kerja karyawan
     // hanya kena potongan 1x upah harian (bukan pengaliPotonganOff / biasanya 2x), karena
-    // karyawan memang belum mulai bekerja saat itu. Kuota OFF gratis (jatahOffPerPeriode)
-    // dipakai dulu buat hari2 absen yang PALING AWAL secara kronologis.
+    // karyawan memang belum mulai bekerja saat itu.
     // Jangan hitung hari di MASA DEPAN sebagai alpa — kalau periode gajian belum selesai
     // (misal lagi dilihat sebelum tanggal 25), hari yang belum kejalanin bukan alpa.
     const todayKeyForAbsent = dateKeyJakarta(new Date().toISOString());
     const absentTo = to < todayKeyForAbsent ? to : todayKeyForAbsent;
     const absentDates = to < from ? [] : computeAbsentDates(e.employee, from, absentTo, e.presentDates, leaves);
     const hariTidakHadir = absentDates.length;
+    const tanggalMasuk = emp.tanggalMasuk || null;
+    // Hari alpa sebelum tanggal masuk kerja selalu kena potongan penuh dan TIDAK ikut memakai
+    // jatah off gratis -- jatah itu haknya karyawan yang sudah bekerja, bukan buat hari sebelum
+    // dia resmi join. Kuota jatah off cuma dipakai buat hari alpa SETELAH tanggal masuk kerja,
+    // diambil dulu dari hari2 absen yang PALING AWAL secara kronologis di antara hari2 itu.
+    const preJoinAbsentDates = tanggalMasuk ? absentDates.filter((dk) => dk < tanggalMasuk) : [];
+    const postJoinAbsentDates = tanggalMasuk ? absentDates.filter((dk) => dk >= tanggalMasuk) : absentDates;
     const jatah = config.jatahOffPerPeriode || 0;
-    const offBerlebih = Math.max(0, hariTidakHadir - jatah);
-    const chargedAbsentDates = offBerlebih > 0 ? absentDates.slice(hariTidakHadir - offBerlebih) : [];
+    const postJoinOverQuota = Math.max(0, postJoinAbsentDates.length - jatah);
+    const chargedPostJoinDates = postJoinOverQuota > 0 ? postJoinAbsentDates.slice(postJoinAbsentDates.length - postJoinOverQuota) : [];
+    const chargedAbsentDates = [...preJoinAbsentDates, ...chargedPostJoinDates];
+    const offBerlebih = chargedAbsentDates.length;
     const hariCuti = cutiDisetujui[e.employee] || 0;
     const potonganKasbon = kasbonPotongan[e.employee] || 0;
 
@@ -511,7 +519,6 @@ function computePayrollSummary(records, config, from, to) {
     const kerajinanEligible = offBerlebih === 0 && e.terlambatKali <= (config.maksTerlambatUntukKerajinan ?? 2);
     const kerajinan = kerajinanEligible ? Math.round(totalPendapatan * 0.1) : 0;
 
-    const tanggalMasuk = emp.tanggalMasuk || null;
     const potonganOff = Math.round(chargedAbsentDates.reduce((sum, dk) => {
       const pengali = (tanggalMasuk && dk < tanggalMasuk) ? 1 : (config.pengaliPotonganOff || 0);
       return sum + gajiHarian * pengali;
