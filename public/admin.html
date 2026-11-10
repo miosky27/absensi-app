@@ -293,6 +293,38 @@
         </div>
       </div>
 
+      <!-- ================= MODAL: TAMBAH KASBON (admin, manual) ================= -->
+      <div id="kasbonModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:60">
+        <div style="background:#fff;border-radius:14px;width:480px;max-width:94%;max-height:88vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+          <div style="background:#702464;color:#fff;padding:16px 22px;font-weight:800;font-size:16px;display:flex;justify-content:space-between;align-items:center">
+            <span>+ Tambah Kasbon</span>
+            <span style="cursor:pointer;opacity:.8" id="kasbonModalClose">✕</span>
+          </div>
+          <div style="padding:20px 22px;display:flex;flex-direction:column;gap:14px">
+            <div class="hint" style="margin:0">Buat kasbon baru langsung (tanpa lewat pengajuan karyawan) — cocok untuk catat sisa kasbon lama atau kasbon tambahan.</div>
+            <div class="field" style="margin:0"><label>Karyawan</label>
+              <select id="kasbonFEmployee"></select>
+            </div>
+            <div class="field" style="margin:0"><label>Jenis</label>
+              <select id="kasbonFJenis">
+                <option value="cicil">Cicil</option>
+                <option value="potlang">Potong Lunas</option>
+              </select>
+            </div>
+            <div class="field" style="margin:0"><label>Tanggal Pinjaman</label><input type="date" id="kasbonFTanggal" /></div>
+            <div class="field" style="margin:0"><label>Jumlah Pinjaman (Rp)</label><input type="number" id="kasbonFJumlah" /></div>
+            <div class="field" style="margin:0" id="kasbonFCicilanWrap"><label>Cicilan per Bulan (Rp)</label><input type="number" id="kasbonFCicilan" /></div>
+            <div class="field" style="margin:0"><label>Sudah Dibayar Sejauh Ini (Rp)</label><input type="number" id="kasbonFSudahDibayar" placeholder="0 kalau kasbon baru / belum ada bayar" /></div>
+            <div class="field" style="margin:0"><label>Catatan</label><input type="text" id="kasbonFCatatan" /></div>
+          </div>
+          <div style="padding:16px 22px;border-top:1px solid #eee;display:flex;justify-content:flex-end;align-items:center;gap:10px">
+            <span id="kasbonModalMsg" style="font-size:13px;color:#c5221f"></span>
+            <button class="btn secondary" type="button" id="kasbonModalCancelBtn">Batal</button>
+            <button class="btn" type="button" id="kasbonModalSaveBtn">Simpan</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ================= IJIN/CUTI ================= -->
       <div id="page-ijincuti" class="page" style="display:none">
         <div class="topbar"><h2 class="page-title">Ijin / Cuti</h2></div>
@@ -458,7 +490,8 @@
         <div class="topbar"><h2 class="page-title">Kasbon</h2></div>
         <div class="breadcrumb">Dashboard &gt; Kasbon</div>
         <div class="card">
-          <div style="margin-bottom:10px">
+          <div style="margin-bottom:10px;display:flex;gap:10px">
+            <button class="btn" id="addKasbonBtn" type="button">+ Tambah Kasbon</button>
             <button class="btn secondary" id="exportKasbonBtn" type="button">Export</button>
           </div>
           <div style="overflow-x:auto">
@@ -1229,6 +1262,53 @@ document.getElementById('exportKasbonBtn').addEventListener('click', async () =>
     alert('Gagal mengunduh: ' + e.message);
   }
 });
+function openKasbonModal() {
+  const sel = document.getElementById('kasbonFEmployee');
+  sel.innerHTML = currentEmployees
+    .filter((e) => e.status !== 'nonaktif')
+    .map((e) => `<option value="${e.phone}">${e.name}</option>`).join('');
+  document.getElementById('kasbonFJenis').value = 'cicil';
+  document.getElementById('kasbonFTanggal').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('kasbonFJumlah').value = '';
+  document.getElementById('kasbonFCicilan').value = '';
+  document.getElementById('kasbonFSudahDibayar').value = '';
+  document.getElementById('kasbonFCatatan').value = '';
+  document.getElementById('kasbonFCicilanWrap').style.display = '';
+  document.getElementById('kasbonModalMsg').textContent = '';
+  document.getElementById('kasbonModalOverlay').style.display = 'flex';
+}
+function closeKasbonModal() {
+  document.getElementById('kasbonModalOverlay').style.display = 'none';
+}
+document.getElementById('addKasbonBtn').addEventListener('click', openKasbonModal);
+document.getElementById('kasbonModalClose').addEventListener('click', closeKasbonModal);
+document.getElementById('kasbonModalCancelBtn').addEventListener('click', closeKasbonModal);
+document.getElementById('kasbonFJenis').addEventListener('change', () => {
+  document.getElementById('kasbonFCicilanWrap').style.display =
+    document.getElementById('kasbonFJenis').value === 'cicil' ? '' : 'none';
+});
+document.getElementById('kasbonModalSaveBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('kasbonModalMsg');
+  const phone = document.getElementById('kasbonFEmployee').value;
+  const jenis = document.getElementById('kasbonFJenis').value;
+  const jumlah = Number(document.getElementById('kasbonFJumlah').value) || 0;
+  const cicilanPerBulan = Number(document.getElementById('kasbonFCicilan').value) || 0;
+  const sudahDibayar = Number(document.getElementById('kasbonFSudahDibayar').value) || 0;
+  const tanggal = document.getElementById('kasbonFTanggal').value;
+  const catatan = document.getElementById('kasbonFCatatan').value.trim();
+  if (!phone) { msg.textContent = 'Pilih karyawan dulu.'; return; }
+  if (!jumlah || jumlah <= 0) { msg.textContent = 'Jumlah pinjaman harus lebih dari 0.'; return; }
+  if (jenis === 'cicil' && (!cicilanPerBulan || cicilanPerBulan <= 0)) { msg.textContent = 'Cicilan per bulan wajib diisi untuk kasbon cicil.'; return; }
+  const res = await fetch('/api/kasbon/admin-create', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ phone, jenis, jumlah, cicilanPerBulan, sudahDibayar, tanggal, catatan }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { msg.textContent = data.error || 'Gagal menyimpan.'; return; }
+  closeKasbonModal();
+  loadKasbon();
+});
+
 async function loadKasbon() {
   const res = await fetch('/api/kasbon', { headers: authHeaders() });
   const data = await res.json();

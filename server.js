@@ -1855,6 +1855,52 @@ const server = http.createServer(async (req, res) => {
       addAdminNotification(`${emp.name} mengajukan kasbon ${jenis === 'cicil' ? 'cicil' : 'potong lunas'} sebesar Rp${jml.toLocaleString('id-ID')}`, 'kasbon_new', entry.id);
       return sendJSON(res, 200, { ok: true, kasbon: entry });
     }
+    // Admin: input kasbon manual langsung (Task #48) - dua kegunaan: (1) catat "sisa kasbon
+    // bulan lalu" (data lama yang sebelumnya dicatat manual di luar sistem) lewat field
+    // sudahDibayar, (2) bikin kasbon tambahan baru kapan aja tanpa lewat pengajuan karyawan.
+    // Beda dari POST /api/kasbon (dipanggil app karyawan): endpoint ini butuh login admin,
+    // statusnya langsung 'disetujui' (skip approval), dan bisa sekaligus catat jumlah yang
+    // sudah dibayar sebagai payment awal/backdated supaya sisa langsung akurat.
+    if (pathName === '/api/kasbon/admin-create' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const { phone, jenis, jumlah, cicilanPerBulan, catatan, tanggal, sudahDibayar } = body;
+      const emp = config.employees.find((e) => e.phone === String(phone || '').trim());
+      if (!emp) return sendJSON(res, 400, { error: 'Karyawan tidak ditemukan.' });
+      if (!['cicil', 'potlang'].includes(jenis)) return sendJSON(res, 400, { error: 'Jenis kasbon harus "cicil" atau "potlang".' });
+      const jml = Number(jumlah);
+      if (!jml || jml <= 0) return sendJSON(res, 400, { error: 'Jumlah pinjaman harus lebih dari 0.' });
+      let cicilan = null;
+      if (jenis === 'cicil') {
+        cicilan = Number(cicilanPerBulan);
+        if (!cicilan || cicilan <= 0) return sendJSON(res, 400, { error: 'Cicilan per bulan harus diisi untuk kasbon cicil.' });
+      }
+      const tgl = (tanggal && /^\d{4}-\d{2}-\d{2}$/.test(tanggal)) ? tanggal : dateKeyJakarta(new Date().toISOString());
+      const kasbonList = readJSON(KASBON_FILE);
+      const entry = {
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        phone: emp.phone, employee: emp.name, jenis, jumlah: jml, cicilanPerBulan: cicilan, catatan: catatan || '',
+        status: 'disetujui', // admin yang input langsung, tidak perlu approval
+        tanggal: tgl,
+        createdAt: new Date().toISOString(),
+      };
+      kasbonList.push(entry);
+
+      let dibayarAwal = Math.max(0, Number(sudahDibayar) || 0);
+      if (dibayarAwal > jml) dibayarAwal = jml;
+      if (dibayarAwal > 0) {
+        const payments = readJSON(KASBON_PAYMENTS_FILE);
+        payments.push({
+          id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+          kasbonId: entry.id, phone: emp.phone, employee: emp.name, jumlah: dibayarAwal,
+          tanggal: tgl, createdAt: new Date().toISOString(),
+        });
+        writeJSON(KASBON_PAYMENTS_FILE, payments);
+        if (dibayarAwal >= jml) entry.status = 'lunas';
+      }
+      writeJSON(KASBON_FILE, kasbonList);
+      return sendJSON(res, 200, { ok: true, kasbon: entry });
+    }
     // Riwayat kasbon milik karyawan sendiri + sisa.
     if (pathName === '/api/my-kasbon' && req.method === 'GET') {
       const phone = String(url.searchParams.get('phone') || '').trim();
