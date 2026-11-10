@@ -137,7 +137,7 @@
         <span>Admin Absensi</span>
       </div>
       <div class="side-item active" data-page="dashboard"><span class="ic">📊</span><span>Dashboard</span></div>
-      <div class="side-item" data-page="pegawai"><span class="ic">👥</span><span>Pegawai</span></div>
+      <div class="side-item" data-page="pegawai"><span class="ic">👥</span><span>Karyawan</span></div>
       <div class="side-item" data-page="ijincuti"><span class="ic">📅</span><span>Ijin/Cuti</span></div>
       <div class="side-item" data-page="slipgaji"><span class="ic">🧾</span><span>Slip Gaji</span></div>
       <div class="side-item" data-page="absensi"><span class="ic">⏱️</span><span>Absensi</span></div>
@@ -176,21 +176,63 @@
 
       <!-- ================= PEGAWAI ================= -->
       <div id="page-pegawai" class="page" style="display:none">
-        <div class="topbar"><h2 class="page-title">Pegawai</h2></div>
+        <div class="topbar"><h2 class="page-title">Karyawan</h2></div>
         <div class="card">
           <div class="emp-toolbar">
             <input type="text" id="empSearchInput" placeholder="Cari nama / jabatan..." />
-            <button class="btn secondary" type="button" id="importCsvBtn">📥 Import CSV</button>
-            <button class="btn secondary" type="button" id="exportCsvBtn">📤 Export CSV</button>
-            <button class="btn" type="button" id="addEmpBtn">+ Tambah Karyawan</button>
+            <button class="btn secondary" type="button" id="importCsvBtn">Import</button>
+            <button class="btn secondary" type="button" id="exportCsvBtn">Export</button>
           </div>
           <input type="file" accept=".csv,text/csv" style="display:none" id="importCsvInput" />
           <span id="importCsvStatus" style="font-size:12px"></span>
           <div class="hint">Import: siapkan file Excel dengan kolom <b>Nama, No Telepon, No ID, Jabatan</b> (urutan bebas), simpan sebagai CSV, lalu unggah. Karyawan dengan nomor telepon yang sudah ada akan diperbarui.</div>
-          <div id="empList" style="margin-top:14px"></div>
-          <div style="margin-top:16px">
-            <button class="btn" id="saveEmpBtn">Simpan Perubahan Pegawai</button>
-            <span id="saveEmpMsg" style="margin-left:10px;font-size:13px;color:#137333"></span>
+          <div style="overflow-x:auto">
+            <table id="empTable">
+              <thead><tr><th>Nama Karyawan</th><th>ID Karyawan</th><th>Jabatan</th><th>Keterangan</th><th>Aksi</th></tr></thead>
+              <tbody id="empList"></tbody>
+            </table>
+          </div>
+          <div class="hint" id="empListEmpty"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end">
+          <button class="btn" type="button" id="addEmpBtn">+ Tambah Karyawan</button>
+        </div>
+      </div>
+
+      <!-- ---- Modal Edit/Tambah Karyawan ---- -->
+      <div id="empModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);align-items:center;justify-content:center;z-index:60">
+        <div style="background:#fff;border-radius:14px;width:640px;max-width:94%;max-height:88vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+          <div style="background:#702464;color:#fff;padding:16px 22px;font-weight:800;font-size:16px;display:flex;justify-content:space-between;align-items:center">
+            <span id="empModalTitle">Edit Data Karyawan</span>
+            <span style="cursor:pointer;opacity:.8" id="empModalClose">✕</span>
+          </div>
+          <div style="padding:20px 22px;display:flex;align-items:center;gap:12px">
+            <img class="thumb emp-avatar" id="empModalPhoto" src="" onerror="this.style.visibility='hidden'" style="width:48px;height:48px;border-radius:50%;object-fit:cover" />
+            <input type="file" accept="image/*" capture="environment" style="display:none" id="empModalPhotoInput" />
+            <button class="btn secondary small" type="button" id="empModalUploadPhotoBtn">Ubah Foto</button>
+            <span id="empModalPhotoStatus" style="font-size:12px;color:#137333"></span>
+          </div>
+          <div style="padding:0 22px 20px;display:grid;grid-template-columns:1fr 1fr;gap:14px 18px">
+            <div class="field"><label>Nama Depan</label><input type="text" id="empFNamaDepan" /></div>
+            <div class="field"><label>Nama Belakang</label><input type="text" id="empFNamaBelakang" /></div>
+            <div class="field"><label>No. HP</label><input type="text" id="empFPhone" /></div>
+            <div class="field"><label>ID Karyawan</label><input type="text" id="empFIdNumber" /></div>
+            <div class="field"><label>Jabatan</label><input type="text" id="empFPosition" /></div>
+            <div class="field"><label>Email</label><input type="email" id="empFEmail" /></div>
+            <div class="field"><label>Tanggal Masuk</label><input type="date" id="empFTanggalMasuk" /></div>
+            <div class="field"><label>Gaji Pokok (Rp)</label><input type="number" id="empFGajiPokok" /></div>
+            <div class="field"><label>Upah Lembur/Jam (Rp)</label><input type="number" id="empFUpahLembur" placeholder="Kosongkan = Gaji Pokok ÷ 240" /></div>
+            <div class="field"><label>Status Karyawan</label>
+              <select id="empFStatus"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select>
+            </div>
+          </div>
+          <div style="padding:16px 22px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
+            <button class="btn danger small" type="button" id="empModalDeleteBtn">Hapus Karyawan</button>
+            <div style="display:flex;gap:10px;align-items:center">
+              <span id="empModalMsg" style="font-size:13px;color:#c5221f"></span>
+              <button class="btn secondary" type="button" id="empModalCancelBtn">Batal</button>
+              <button class="btn" type="button" id="empModalSaveBtn">Simpan</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1078,117 +1120,152 @@ document.getElementById('empSearchInput').addEventListener('input', (e) => {
 function renderEmpList() {
   const container = document.getElementById('empList');
   container.innerHTML = '';
+  const filtered = [];
   currentEmployees.forEach((emp, i) => {
     if (empSearchTerm) {
       const hay = `${emp.name || ''} ${emp.namaDepan || ''} ${emp.namaBelakang || ''} ${emp.position || ''}`.toLowerCase();
       if (!hay.includes(empSearchTerm)) return;
     }
-    const row = document.createElement('div');
-    row.className = 'emp-card';
-    const photoSrc = emp.phone ? `/api/employee-photo/${encodeURIComponent(emp.phone)}?t=${Date.now()}` : '';
+    filtered.push(i);
+  });
+  document.getElementById('empListEmpty').textContent = filtered.length === 0 ? 'Belum ada karyawan.' : '';
+  filtered.forEach((i) => {
+    const emp = currentEmployees[i];
     const status = emp.status || 'aktif';
-    row.innerHTML = `
-      <div class="emp-card-top">
-        <div style="display:flex;align-items:center;gap:8px">
-          <img class="thumb emp-avatar" src="${photoSrc}" data-idx="${i}" onerror="this.style.visibility='hidden'" />
-          <input type="file" accept="image/*" capture="environment" style="display:none" data-photoinput="${i}" />
-          <button class="btn secondary small" type="button" data-uploadphoto="${i}">Ubah Foto</button>
-          <span class="emp-photo-status" data-status="${i}" style="font-size:12px;color:#137333"></span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge ${status}">${status === 'aktif' ? 'Aktif' : 'Nonaktif'}</span>
-          <button class="btn secondary small" type="button" data-togglestatus="${i}">${status === 'aktif' ? 'Nonaktifkan' : 'Aktifkan'}</button>
-        </div>
-      </div>
-      <div class="emp-row">
-        <input type="text" placeholder="Nomor telepon" value="${emp.phone || ''}" data-idx="${i}" data-field="phone" />
-        <input type="text" placeholder="Nama Depan" value="${emp.namaDepan || ''}" data-idx="${i}" data-field="namaDepan" />
-        <input type="text" placeholder="Nama Belakang" value="${emp.namaBelakang || ''}" data-idx="${i}" data-field="namaBelakang" />
-      </div>
-      <div class="emp-row">
-        <input type="text" placeholder="No ID / NIK" value="${emp.idNumber || ''}" data-idx="${i}" data-field="idNumber" />
-        <input type="text" placeholder="Jabatan" value="${emp.position || ''}" data-idx="${i}" data-field="position" />
-      </div>
-      <div class="emp-row">
-        <input type="email" placeholder="Email" value="${emp.email || ''}" data-idx="${i}" data-field="email" />
-        <input type="date" placeholder="Tanggal Masuk" value="${emp.tanggalMasuk || ''}" data-idx="${i}" data-field="tanggalMasuk" />
-      </div>
-      <div class="emp-row">
-        <input type="number" placeholder="Gaji Pokok (Rp)" value="${emp.gajiPokok || ''}" data-idx="${i}" data-field="gajiPokok" data-numeric="1" />
-        <input type="number" placeholder="Upah Lembur/Jam (Rp, kosongkan = Gaji Pokok ÷ 240)" value="${emp.upahLemburPerJam || ''}" data-idx="${i}" data-field="upahLemburPerJam" data-numeric="1" />
-        <button class="btn danger small" type="button" data-remove="${i}">Hapus</button>
-      </div>
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${emp.name || '-'}</td>
+      <td>${emp.idNumber || '-'}</td>
+      <td>${emp.position || '-'}</td>
+      <td><span class="badge ${status}">${status === 'aktif' ? 'Aktif' : 'Nonaktif'}</span></td>
+      <td><button class="btn small" type="button" data-editemp="${i}">Edit</button></td>
     `;
-    container.appendChild(row);
+    container.appendChild(tr);
   });
-  container.querySelectorAll('input[data-field]').forEach((inp) => {
-    inp.addEventListener('input', () => {
-      const val = inp.dataset.numeric ? (inp.value === '' ? 0 : Number(inp.value)) : inp.value;
-      currentEmployees[inp.dataset.idx][inp.dataset.field] = val;
-      if (inp.dataset.field === 'namaDepan' || inp.dataset.field === 'namaBelakang') {
-        const emp = currentEmployees[inp.dataset.idx];
-        emp.name = [emp.namaDepan, emp.namaBelakang].filter(Boolean).join(' ').trim();
-      }
-    });
-  });
-  container.querySelectorAll('[data-remove]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!confirm('Hapus karyawan ini dari daftar?')) return;
-      currentEmployees.splice(Number(btn.dataset.remove), 1);
-      renderEmpList();
-    });
-  });
-  container.querySelectorAll('[data-togglestatus]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const emp = currentEmployees[btn.dataset.togglestatus];
-      emp.status = (emp.status || 'aktif') === 'aktif' ? 'nonaktif' : 'aktif';
-      renderEmpList();
-    });
-  });
-  container.querySelectorAll('[data-uploadphoto]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const idx = btn.dataset.uploadphoto;
-      container.querySelector(`input[data-photoinput="${idx}"]`).click();
-    });
-  });
-  container.querySelectorAll('input[data-photoinput]').forEach((fileInp) => {
-    fileInp.addEventListener('change', async () => {
-      const idx = fileInp.dataset.photoinput;
-      const emp = currentEmployees[idx];
-      const statusEl = container.querySelector(`[data-status="${idx}"]`);
-      const file = fileInp.files[0];
-      if (!file) return;
-      if (!emp.phone) {
-        statusEl.style.color = '#c5221f';
-        statusEl.textContent = 'Isi nomor telepon dulu, lalu simpan sebelum upload foto.';
-        return;
-      }
-      statusEl.style.color = '#888';
-      statusEl.textContent = 'Mengunggah...';
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const res = await fetch('/api/employees/photo', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ phone: emp.phone, photoBase64: reader.result }),
-        });
-        if (res.ok) {
-          statusEl.style.color = '#137333';
-          statusEl.textContent = 'Foto tersimpan ✓';
-          renderEmpList();
-        } else {
-          const err = await res.json().catch(() => ({}));
-          statusEl.style.color = '#c5221f';
-          statusEl.textContent = err.error || 'Gagal upload foto';
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+  container.querySelectorAll('[data-editemp]').forEach((btn) => {
+    btn.addEventListener('click', () => openEmpModal(Number(btn.dataset.editemp)));
   });
 }
 
-document.getElementById('addEmpBtn').addEventListener('click', () => {
-  currentEmployees.push({ phone: '', name: '', namaDepan: '', namaBelakang: '', idNumber: '', position: '', email: '', tanggalMasuk: '', status: 'aktif', photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 });
-  renderEmpList();
+// ---- Modal Tambah/Edit Karyawan ----
+let empModalIndex = null; // null = tambah karyawan baru
+
+function openEmpModal(idx) {
+  empModalIndex = idx;
+  const isNew = idx === null;
+  const emp = isNew
+    ? { phone: '', name: '', namaDepan: '', namaBelakang: '', idNumber: '', position: '', email: '', tanggalMasuk: '', status: 'aktif', photoFilename: null, gajiPokok: 0, upahLemburPerJam: 0 }
+    : currentEmployees[idx];
+
+  document.getElementById('empModalTitle').textContent = isNew ? 'Tambah Karyawan' : 'Edit Data Karyawan';
+  document.getElementById('empModalDeleteBtn').style.display = isNew ? 'none' : '';
+  document.getElementById('empModalMsg').textContent = '';
+  document.getElementById('empModalPhotoStatus').textContent = '';
+  document.getElementById('empFNamaDepan').value = emp.namaDepan || '';
+  document.getElementById('empFNamaBelakang').value = emp.namaBelakang || '';
+  document.getElementById('empFPhone').value = emp.phone || '';
+  document.getElementById('empFIdNumber').value = emp.idNumber || '';
+  document.getElementById('empFPosition').value = emp.position || '';
+  document.getElementById('empFEmail').value = emp.email || '';
+  document.getElementById('empFTanggalMasuk').value = emp.tanggalMasuk || '';
+  document.getElementById('empFGajiPokok').value = emp.gajiPokok || '';
+  document.getElementById('empFUpahLembur').value = emp.upahLemburPerJam || '';
+  document.getElementById('empFStatus').value = emp.status || 'aktif';
+  const photoEl = document.getElementById('empModalPhoto');
+  photoEl.style.visibility = 'visible';
+  photoEl.src = emp.phone ? `/api/employee-photo/${encodeURIComponent(emp.phone)}?t=${Date.now()}` : '';
+
+  document.getElementById('empModalOverlay').style.display = 'flex';
+}
+
+function closeEmpModal() {
+  document.getElementById('empModalOverlay').style.display = 'none';
+  empModalIndex = null;
+}
+
+document.getElementById('addEmpBtn').addEventListener('click', () => openEmpModal(null));
+document.getElementById('empModalClose').addEventListener('click', closeEmpModal);
+document.getElementById('empModalCancelBtn').addEventListener('click', closeEmpModal);
+
+document.getElementById('empModalSaveBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('empModalMsg');
+  const namaDepan = document.getElementById('empFNamaDepan').value.trim();
+  const namaBelakang = document.getElementById('empFNamaBelakang').value.trim();
+  const phone = document.getElementById('empFPhone').value.trim();
+  if (!phone || !namaDepan) { msg.textContent = 'Nomor HP & Nama Depan wajib diisi.'; return; }
+
+  const emp = {
+    phone,
+    namaDepan,
+    namaBelakang,
+    name: [namaDepan, namaBelakang].filter(Boolean).join(' ').trim(),
+    idNumber: document.getElementById('empFIdNumber').value.trim(),
+    position: document.getElementById('empFPosition').value.trim(),
+    email: document.getElementById('empFEmail').value.trim(),
+    tanggalMasuk: document.getElementById('empFTanggalMasuk').value,
+    gajiPokok: Number(document.getElementById('empFGajiPokok').value) || 0,
+    upahLemburPerJam: Number(document.getElementById('empFUpahLembur').value) || 0,
+    status: document.getElementById('empFStatus').value,
+  };
+
+  if (empModalIndex === null) {
+    emp.photoFilename = null;
+    currentEmployees.push(emp);
+  } else {
+    currentEmployees[empModalIndex] = { ...currentEmployees[empModalIndex], ...emp };
+  }
+
+  const ok = await saveEmployees();
+  if (ok) {
+    closeEmpModal();
+    await loadConfig();
+  } else {
+    msg.textContent = 'Gagal menyimpan.';
+  }
+});
+
+document.getElementById('empModalDeleteBtn').addEventListener('click', async () => {
+  if (empModalIndex === null) return;
+  if (!confirm('Hapus karyawan ini dari daftar?')) return;
+  currentEmployees.splice(empModalIndex, 1);
+  const ok = await saveEmployees();
+  if (ok) { closeEmpModal(); await loadConfig(); }
+  else { document.getElementById('empModalMsg').textContent = 'Gagal menghapus.'; }
+});
+
+document.getElementById('empModalUploadPhotoBtn').addEventListener('click', () => {
+  document.getElementById('empModalPhotoInput').click();
+});
+document.getElementById('empModalPhotoInput').addEventListener('change', async () => {
+  const fileInp = document.getElementById('empModalPhotoInput');
+  const statusEl = document.getElementById('empModalPhotoStatus');
+  const phone = document.getElementById('empFPhone').value.trim();
+  const file = fileInp.files[0];
+  if (!file) return;
+  if (!phone) {
+    statusEl.style.color = '#c5221f';
+    statusEl.textContent = 'Isi nomor HP dulu, lalu simpan sebelum upload foto.';
+    return;
+  }
+  statusEl.style.color = '#888';
+  statusEl.textContent = 'Mengunggah...';
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const res = await fetch('/api/employees/photo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ phone, photoBase64: reader.result }),
+    });
+    if (res.ok) {
+      statusEl.style.color = '#137333';
+      statusEl.textContent = 'Foto tersimpan ✓';
+      document.getElementById('empModalPhoto').src = `/api/employee-photo/${encodeURIComponent(phone)}?t=${Date.now()}`;
+    } else {
+      const err = await res.json().catch(() => ({}));
+      statusEl.style.color = '#c5221f';
+      statusEl.textContent = err.error || 'Gagal upload foto';
+    }
+  };
+  reader.readAsDataURL(file);
 });
 
 // ---- Export karyawan ke CSV ----
@@ -1242,12 +1319,6 @@ async function saveEmployees() {
   });
   return res.ok;
 }
-document.getElementById('saveEmpBtn').addEventListener('click', async () => {
-  const msg = document.getElementById('saveEmpMsg');
-  const ok = await saveEmployees();
-  if (ok) { msg.style.color = '#137333'; msg.textContent = 'Tersimpan ✓'; setTimeout(() => msg.textContent='', 2000); await loadConfig(); }
-  else { msg.style.color = '#c5221f'; msg.textContent = 'Gagal menyimpan'; }
-});
 
 document.getElementById('saveCfgBtn').addEventListener('click', async () => {
   const body = {
