@@ -457,7 +457,7 @@
           <div style="overflow-x:auto">
           <table id="dailyTable">
             <thead><tr>
-              <th>Foto</th><th>Nama</th><th>ID Karyawan</th>
+              <th>Nama</th><th>ID Karyawan</th>
               <th>Jam Masuk</th><th>Jam Pulang</th>
               <th>Lembur Masuk</th><th>Lembur Pulang</th>
             </tr></thead>
@@ -772,8 +772,6 @@ async function loadDaily() {
   for (const name of allNames) {
     const emp = empByName[name] || {};
     const g = byEmployee[name] || {};
-    const photoRecord = g.masuk || g.keluar || g.lembur_masuk || g.lembur_keluar;
-    const photoUrl = photoRecord ? '/api/photo/' + photoRecord.photoFilename + '?t=' + token : null;
 
     const editBtn = (g, type) => emp.phone
       ? `<button class="btn secondary small" type="button" data-manualedit="${type}" data-phone="${emp.phone}" data-recid="${g[type] ? g[type].id : ''}" data-current="${g[type] ? g[type].timeHHMM : ''}" data-loc="${g[type] ? (g[type].nearestLocation || '') : ''}" data-shift="${g[type] ? (g[type].shift || '') : ''}" style="padding:2px 8px;font-size:11px;margin-left:4px">${g[type] ? 'Edit' : '+ Isi'}</button>`
@@ -793,9 +791,6 @@ async function loadDaily() {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${photoUrl
-        ? `<img class="thumb" src="${photoUrl}" onclick="openOverlay('${photoUrl}')" />`
-        : `<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:#bbb;font-size:18px">—</div>`}</td>
       <td>${name}</td>
       <td>${emp.idNumber || '—'}</td>
       <td>${g.masuk ? `${jamText(g, 'masuk', g.masuk.timeHHMM)} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}${editBtn(g, 'masuk')}${deleteBtn(g, 'masuk')}</td>
