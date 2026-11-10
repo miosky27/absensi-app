@@ -1800,6 +1800,27 @@ const server = http.createServer(async (req, res) => {
       }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return sendJSON(res, 200, { kasbon: result });
     }
+    // Export rekap Kasbon ke .xlsx — seluruh data (halaman Kasbon tidak punya filter tanggal/status).
+    if (pathName === '/api/kasbon/export' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const kasbonList = readJSON(KASBON_FILE);
+      const payments = readJSON(KASBON_PAYMENTS_FILE);
+      const result = kasbonList.map((k) => {
+        const dibayar = payments.filter((p) => p.kasbonId === k.id).reduce((s, p) => s + p.jumlah, 0);
+        return { ...k, dibayar, sisa: Math.max(0, k.jumlah - dibayar) };
+      }).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+      const headerRow = ['Nama', 'Jenis', 'Jumlah', 'Cicilan/Bulan', 'Dibayar', 'Sisa', 'Status', 'Catatan'];
+      const dataRows = result.map((k) => [
+        k.employee || '', k.jenis === 'cicil' ? 'Cicil' : 'Potong Lunas', k.jumlah, k.cicilanPerBulan || 0, k.dibayar, k.sisa, k.status || '', k.catatan || '',
+      ]);
+      const xlsxBuffer = buildXlsx([{ name: 'Kasbon', rows: [headerRow, ...dataRows] }]);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="kasbon.xlsx"',
+      });
+      return res.end(xlsxBuffer);
+    }
     // Admin: setujui pengajuan kasbon.
     if (pathName.startsWith('/api/kasbon/') && pathName.endsWith('/approve') && req.method === 'POST') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
