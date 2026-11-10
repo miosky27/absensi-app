@@ -443,7 +443,10 @@
           <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
             <button class="btn secondary" id="loadGajiBtn" type="button">Tampilkan</button>
             <button class="btn secondary" id="exportGajiBtn" type="button">Export</button>
+            <button class="btn" id="kunciPeriodeBtn" type="button" style="background:#8a5a10;color:#fff">Kunci Periode</button>
+            <span class="badge ontime" style="display:none" id="periodeTerkunciBadge">Periode terkunci</span>
           </div>
+          <div class="hint" style="margin-top:6px">Setelah dikunci, angka slip periode ini disimpan dan tidak berubah walau ada absen yang diedit. Absen di dalam periode terkunci juga tidak bisa diubah sampai kuncinya dibuka.</div>
           <div class="hint" id="gajiEmpty" style="margin-top:10px"></div>
           <div style="overflow-x:auto; margin-top:10px">
           <table id="gajiTable">
@@ -1078,6 +1081,7 @@ async function loadGaji() {
     if (!res.ok) { emptyEl.textContent = data.error || 'Gagal memuat data gaji'; return; }
     emptyEl.textContent = '';
     lastPayroll = data.payroll;
+    setGajiLockState(!!data.locked, data.lockedAt);
     data.payroll.forEach((p, idx) => {
       const emp = currentEmployees.find((e) => e.name === p.employee);
       const tr = document.createElement('tr');
@@ -1104,6 +1108,37 @@ async function loadGaji() {
   }
 }
 document.getElementById('loadGajiBtn').addEventListener('click', loadGaji);
+
+let gajiPeriodeTerkunci = false;
+function setGajiLockState(locked, lockedAt) {
+  gajiPeriodeTerkunci = locked;
+  const btn = document.getElementById('kunciPeriodeBtn');
+  const badge = document.getElementById('periodeTerkunciBadge');
+  btn.textContent = locked ? 'Buka Kunci' : 'Kunci Periode';
+  badge.style.display = locked ? 'inline-block' : 'none';
+  badge.textContent = locked && lockedAt
+    ? 'Periode terkunci sejak ' + new Date(lockedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    : 'Periode terkunci';
+}
+document.getElementById('kunciPeriodeBtn').addEventListener('click', async () => {
+  const from = document.getElementById('gajiFromInput').value;
+  const to = document.getElementById('gajiToInput').value;
+  if (!from || !to) { alert('Pilih periode dulu.'); return; }
+  const pesan = gajiPeriodeTerkunci
+    ? `Buka kunci periode ${from} s.d. ${to}? Angka slip akan dihitung ulang mengikuti data absen terbaru.`
+    : `Kunci periode ${from} s.d. ${to}? Angka slip akan disimpan dan absen di periode ini tidak bisa diubah sampai kuncinya dibuka.`;
+  if (!confirm(pesan)) return;
+  try {
+    const res = gajiPeriodeTerkunci
+      ? await fetch(`/api/payroll/lock?from=${from}&to=${to}`, { method: 'DELETE', headers: authHeaders() })
+      : await fetch('/api/payroll/lock', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(data.error || 'Gagal mengubah kunci periode.'); return; }
+    loadGaji();
+  } catch (e) {
+    alert('Gagal: ' + e.message);
+  }
+});
 document.getElementById('gajiSelectAll').addEventListener('change', (e) => {
   document.querySelectorAll('.gaji-row-check:not(:disabled)').forEach((cb) => { cb.checked = e.target.checked; });
 });

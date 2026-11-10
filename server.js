@@ -22,6 +22,7 @@ const KASBON_FILE = path.join(DATA_DIR, 'kasbon.json'); // pinjaman karyawan
 const KASBON_PAYMENTS_FILE = path.join(DATA_DIR, 'kasbon_payments.json'); // cicilan/pelunasan kasbon
 const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json'); // pemberitahuan untuk karyawan (status cuti/kasbon dll)
 const ADMIN_NOTIFICATIONS_FILE = path.join(DATA_DIR, 'admin_notifications.json'); // pemberitahuan untuk admin (pengajuan cuti/kasbon baru)
+const PAYROLL_LOCKS_FILE = path.join(DATA_DIR, 'payroll_locks.json'); // periode gaji yang sudah dikunci + hasil hitungannya
 
 const PORT = process.env.PORT || 3000;
 
@@ -38,6 +39,7 @@ ensureFile(KASBON_FILE, []);
 ensureFile(KASBON_PAYMENTS_FILE, []);
 ensureFile(NOTIFICATIONS_FILE, []);
 ensureFile(ADMIN_NOTIFICATIONS_FILE, []);
+ensureFile(PAYROLL_LOCKS_FILE, []);
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
   // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
@@ -416,6 +418,22 @@ function buildKasbonLedger(phone, from, to, kasbonAll, payments) {
     hasil.push({ tanggal: t.tanggal, tipe: t.tipe, jenis: t.jenis, jumlah: t.jumlah, saldoSetelah: Math.max(0, saldo) });
   });
   return hasil;
+}
+
+// ---------- Kunci periode gaji ----------
+// Periode yang dikunci menyimpan hasil hitungan gajinya saat dikunci, jadi slip periode itu
+// tidak berubah lagi walau ada data yang diedit belakangan. Absen di dalam periode terkunci
+// juga tidak bisa ditambah/diubah/dihapus sampai kuncinya dibuka.
+function findPayrollLock(from, to) {
+  return readJSON(PAYROLL_LOCKS_FILE).find((l) => l.from === from && l.to === to) || null;
+}
+function findLockCoveringDate(dateKey) {
+  return readJSON(PAYROLL_LOCKS_FILE).find((l) => dateKey >= l.from && dateKey <= l.to) || null;
+}
+function getPayrollForPeriod(records, config, from, to) {
+  const lock = findPayrollLock(from, to);
+  if (lock) return lock.payroll;
+  return computePayrollSummary(records, config, from, to);
 }
 
 function computePayrollSummary(records, config, from, to) {
@@ -1084,7 +1102,7 @@ const server = http.createServer(async (req, res) => {
       const to = url.searchParams.get('to') || defaultPeriod.to;
 
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
-      const payroll = computePayrollSummary(records, config, from, to);
+      const payroll = getPayrollForPeriod(records, config, from, to);
       const slip = payroll.find((p) => p.employee === emp.name) || null;
 
       return sendJSON(res, 200, {
@@ -1257,6 +1275,8 @@ const server = http.createServer(async (req, res) => {
       }
       if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return sendJSON(res, 400, { error: 'Tanggal tidak valid.' });
       if (!timeHHMM || !/^\d{2}:\d{2}$/.test(timeHHMM)) return sendJSON(res, 400, { error: 'Jam tidak valid (format HH:MM).' });
+      const lockManual = findLockCoveringDate(dateKey);
+      if (lockManual) return sendJSON(res, 400, { error: `Periode ${lockManual.from} s.d. ${lockManual.to} sudah dikunci. Buka kunci dulu di menu Gaji.` });
 
       // Shift wajib dipilih utk jenis Masuk (dipakai untuk hitung lembur/terlambat akurat,
       // bukan fallback shift standar) — dicocokkan ke daftar shift lokasi yang dipilih admin.
@@ -1308,6 +1328,8 @@ const server = http.createServer(async (req, res) => {
       const records = readJSON(RECORDS_FILE);
       const r = records.find((x) => x.id === id);
       if (!r) return sendJSON(res, 404, { error: 'Data absen tidak ditemukan' });
+      const lockEdit = findLockCoveringDate(r.dateKey);
+      if (lockEdit) return sendJSON(res, 400, { error: `Periode ${lockEdit.from} s.d. ${lockEdit.to} sudah dikunci. Buka kunci dulu di menu Gaji.` });
       if (!body.timeHHMM || !/^\d{2}:\d{2}$/.test(body.timeHHMM)) return sendJSON(res, 400, { error: 'Jam tidak valid (format HH:MM).' });
       r.timeHHMM = body.timeHHMM;
       // Kalau admin ikut ubah lokasi/shift (hanya relevan utk record jenis masuk).
@@ -1333,6 +1355,8 @@ const server = http.createServer(async (req, res) => {
       let records = readJSON(RECORDS_FILE);
       const exists = records.find((x) => x.id === id);
       if (!exists) return sendJSON(res, 404, { error: 'Data absen tidak ditemukan' });
+      const lockDel = findLockCoveringDate(exists.dateKey);
+      if (lockDel) return sendJSON(res, 400, { error: `Periode ${lockDel.from} s.d. ${lockDel.to} sudah dikunci. Buka kunci dulu di menu Gaji.` });
       records = records.filter((x) => x.id !== id);
       writeJSON(RECORDS_FILE, records);
       return sendJSON(res, 200, { ok: true });
@@ -1495,8 +1519,40 @@ const server = http.createServer(async (req, res) => {
       const to = url.searchParams.get('to');
       if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from dan to (YYYY-MM-DD) wajib diisi' });
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
+      const payroll = getPayrollForPeriod(records, config, from, to);
+      const lock = findPayrollLock(from, to);
+      return sendJSON(res, 200, { from, to, payroll, locked: !!lock, lockedAt: lock ? lock.lockedAt : null });
+    }
+
+    // Kunci periode gaji: simpan hasil hitungan saat ini dan blokir edit absen di periode itu.
+    if (pathName === '/api/payroll/lock' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const { from, to } = body;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) {
+        return sendJSON(res, 400, { error: 'Periode tidak valid.' });
+      }
+      const locks = readJSON(PAYROLL_LOCKS_FILE);
+      const overlap = locks.find((l) => !(to < l.from || from > l.to));
+      if (overlap) return sendJSON(res, 400, { error: `Periode ini bertabrakan dengan periode terkunci ${overlap.from} s.d. ${overlap.to}.` });
+      const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
       const payroll = computePayrollSummary(records, config, from, to);
-      return sendJSON(res, 200, { from, to, payroll });
+      const lockedAt = new Date().toISOString();
+      locks.push({ from, to, lockedAt, payroll });
+      writeJSON(PAYROLL_LOCKS_FILE, locks);
+      return sendJSON(res, 200, { ok: true, lockedAt });
+    }
+
+    // Buka kunci periode: hapus hasil tersimpan, hitungan kembali mengikuti data absen terbaru.
+    if (pathName === '/api/payroll/lock' && req.method === 'DELETE') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const locks = readJSON(PAYROLL_LOCKS_FILE);
+      const remaining = locks.filter((l) => !(l.from === from && l.to === to));
+      if (remaining.length === locks.length) return sendJSON(res, 404, { error: 'Periode ini tidak terkunci.' });
+      writeJSON(PAYROLL_LOCKS_FILE, remaining);
+      return sendJSON(res, 200, { ok: true });
     }
 
     // Export Slip Gaji ke .xlsx — HANYA karyawan yang dipilih (dicentang) di admin UI.
@@ -1511,7 +1567,7 @@ const server = http.createServer(async (req, res) => {
       const selectedNames = new Set(config.employees.filter((e) => selectedPhones.includes(e.phone)).map((e) => e.name));
 
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
-      const payroll = computePayrollSummary(records, config, from, to).filter((p) => selectedNames.has(p.employee));
+      const payroll = getPayrollForPeriod(records, config, from, to).filter((p) => selectedNames.has(p.employee));
 
       const todayStr = formatTanggalSlash(dateKeyJakarta(new Date().toISOString()));
       const periodeStr = `${formatTanggalIndo(from)} - ${formatTanggalIndo(to)}`;
@@ -1680,7 +1736,7 @@ const server = http.createServer(async (req, res) => {
         validRadius: r.withinRadius ? 'Valid' : `Di luar radius (${r.distanceMeters} m)`,
       }));
 
-      const payroll = computePayrollSummary(records, config, from, to);
+      const payroll = getPayrollForPeriod(records, config, from, to);
 
       // Daftar kasbon yang masih aktif (belum lunas) per karyawan, untuk transparansi potongan
       // kasbon di laporan gaji (termasuk cicilan per bulan yang disepakati).
