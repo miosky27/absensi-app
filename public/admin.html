@@ -136,6 +136,17 @@
   .emp-list-table td { vertical-align:middle; }
   .filter-row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:flex-end; }
   .filter-row .field { margin-bottom:0; min-width:140px; }
+  table.slip-payslip { border-collapse:collapse; margin-top:14px; font-size:13px; width:100%; max-width:720px; }
+  table.slip-payslip td { padding:4px 6px; vertical-align:top; }
+  table.slip-payslip td.lbl { font-weight:700; color:#222; white-space:nowrap; }
+  table.slip-payslip td.lbl .sub { font-weight:400; color:#555; margin-left:4px; }
+  table.slip-payslip td.colon { width:10px; color:#222; font-weight:700; }
+  table.slip-payslip td.val { text-align:right; color:#1a4fa0; font-weight:700; min-width:110px; }
+  table.slip-payslip td.sp { width:24px; }
+  table.slip-payslip td.sect { font-weight:800; text-decoration:underline; padding-top:6px; padding-bottom:4px; color:#222; }
+  table.slip-payslip tr.totalrow td.lbl, table.slip-payslip tr.totalrow td.val { font-weight:800; }
+  table.slip-payslip tr.totalrow td { border-top:1px solid #333; padding-top:6px; }
+  table.slip-payslip tr.gajibersih td.val { font-size:15px; }
 </style>
 </head>
 <body>
@@ -261,6 +272,8 @@
             <div class="field"><label>Tanggal Masuk</label><input type="date" id="empFTanggalMasuk" /></div>
             <div class="field"><label>Gaji Pokok (Rp)</label><input type="number" id="empFGajiPokok" /></div>
             <div class="field"><label>Upah Lembur/Jam (Rp)</label><input type="number" id="empFUpahLembur" placeholder="Kosongkan = Gaji Pokok ÷ 240" /></div>
+            <div class="field"><label>Tunjangan Fungsional (Rp)</label><input type="number" id="empFTunjanganFungsional" /></div>
+            <div class="field"><label>Tunjangan Natura (Rp)</label><input type="number" id="empFTunjanganNatura" /></div>
             <div class="field"><label>Status Karyawan</label>
               <select id="empFStatus"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select>
             </div>
@@ -966,24 +979,95 @@ document.getElementById('exportGajiBtn').addEventListener('click', async () => {
   }
 });
 
+const BULAN_INDO = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+function formatTanggalIndo(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return `${d} ${BULAN_INDO[m - 1]} ${y}`;
+}
+function formatJamKoma(n) {
+  return (Math.round(n * 10) / 10).toFixed(1).replace('.', ',');
+}
+function formatTanggalSlash(ymd) {
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 function showSlipDetail(p, from, to) {
   const card = document.getElementById('slipDetailCard');
   card.style.display = 'block';
+  const emp = currentEmployees.find((e) => e.name === p.employee) || {};
+  const todayStr = formatTanggalSlash(new Date().toISOString().slice(0, 10));
   card.innerHTML = `
     <div class="section-title" style="margin-top:0">Slip Gaji - ${p.employee}</div>
-    <div class="hint">Periode ${from} s.d. ${to}</div>
-    <table style="margin-top:10px">
-      <tr><td>Hari Hadir</td><td style="text-align:right">${p.hariHadir}</td></tr>
-      <tr><td>Terlambat</td><td style="text-align:right">${p.terlambatKali} kali</td></tr>
-      <tr><td>OFF Berlebih</td><td style="text-align:right">${p.offBerlebih} hari</td></tr>
-      <tr><td>Cuti/Ijin Disetujui</td><td style="text-align:right">${p.hariCuti ?? 0} hari</td></tr>
-      <tr><td>Lembur Awal</td><td style="text-align:right">${p.lemburAwalJam} jam</td></tr>
-      <tr><td>Lembur Akhir</td><td style="text-align:right">${p.lemburAkhirJam} jam</td></tr>
-      <tr><td>Lembur Tambahan</td><td style="text-align:right">${p.lemburTambahanJam} jam</td></tr>
-      <tr><td>Kerajinan</td><td style="text-align:right">${p.kerajinanEligible ? formatRupiah(p.kerajinan) : 'Hangus'}</td></tr>
-      <tr><td>Potongan</td><td style="text-align:right;color:#c5221f">${formatRupiah(p.totalPotongan)}</td></tr>
-      <tr><td>Potongan Kasbon</td><td style="text-align:right;color:#c5221f">${formatRupiah(p.potonganKasbon || 0)}</td></tr>
-      <tr><td style="font-weight:700">Gaji Bersih</td><td style="text-align:right;font-weight:700">${formatRupiah(p.gajiBersih)}</td></tr>
+    <table class="slip-payslip">
+      <tr>
+        <td class="lbl">No ID</td><td class="colon">:</td><td class="val">${emp.idNumber || '-'}</td>
+        <td class="sp"></td>
+        <td class="lbl">Department</td><td class="colon">:</td><td class="val">${emp.position || '-'}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Nama</td><td class="colon">:</td><td class="val">${p.employee}</td>
+        <td class="sp"></td>
+        <td class="lbl">Periode</td><td class="colon">:</td><td class="val">${formatTanggalIndo(from)} - ${formatTanggalIndo(to)}</td>
+      </tr>
+      <tr><td colspan="3" style="height:10px"></td><td class="sp"></td><td colspan="3"></td></tr>
+      <tr>
+        <td colspan="3" class="sect">PENDAPATAN</td>
+        <td class="sp"></td>
+        <td colspan="3" class="sect">POTONGAN</td>
+      </tr>
+      <tr>
+        <td class="lbl">Gaji Pokok</td><td class="colon">:</td><td class="val">${formatRupiah(p.gajiPokok || 0)}</td>
+        <td class="sp"></td>
+        <td class="lbl">Tidak Masuk <span class="sub">${p.offBerlebih}</span></td><td class="colon">:</td><td class="val">${formatRupiah(p.potonganOff)}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Tunjangan Fungsional</td><td class="colon">:</td><td class="val">${formatRupiah(p.tunjanganFungsional || 0)}</td>
+        <td class="sp"></td>
+        <td class="lbl">Terlambat <span class="sub">${p.terlambatKali} kali</span></td><td class="colon">:</td><td class="val">${formatRupiah(p.potonganTerlambat)}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Tunjangan Natura</td><td class="colon">:</td><td class="val">${formatRupiah(p.tunjanganNatura || 0)}</td>
+        <td class="sp"></td>
+        <td class="lbl">Pulang Cepat</td><td class="colon">:</td><td class="val">${formatRupiah(p.potonganPulangCepat)}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Uang Makan</td><td class="colon">:</td><td class="val">${formatRupiah(p.uangMakan)}</td>
+        <td class="sp"></td>
+        <td class="lbl">Kasbon</td><td class="colon">:</td><td class="val">${formatRupiah(p.potonganKasbon || 0)}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Lembur Awal <span class="sub">${formatJamKoma(p.lemburAwalJam)}</span></td><td class="colon">:</td><td class="val">${formatRupiah(p.lemburAwalRp)}</td>
+        <td class="sp"></td>
+        <td colspan="3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">Lembur Akhir <span class="sub">${formatJamKoma(p.lemburAkhirJam)}</span></td><td class="colon">:</td><td class="val">${formatRupiah(p.lemburAkhirRp)}</td>
+        <td class="sp"></td>
+        <td colspan="3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">Lembur Tambahan <span class="sub">${formatJamKoma(p.lemburTambahanJam)}</span></td><td class="colon">:</td><td class="val">${formatRupiah(p.lemburTambahanRp)}</td>
+        <td class="sp"></td>
+        <td colspan="3"></td>
+      </tr>
+      <tr><td colspan="3" style="height:8px"></td><td class="sp"></td><td colspan="3"></td></tr>
+      <tr class="totalrow">
+        <td class="lbl">TOTAL PENDAPATAN</td><td class="colon">:</td><td class="val">${formatRupiah(p.totalPendapatan)}</td>
+        <td class="sp"></td>
+        <td class="lbl">TOTAL POTONGAN</td><td class="colon">:</td><td class="val">${formatRupiah(p.totalPotongan)}</td>
+      </tr>
+      <tr><td colspan="7" style="height:14px"></td></tr>
+      <tr class="totalrow">
+        <td class="lbl">KERAJINAN</td><td class="colon">:</td><td class="val">${p.kerajinanEligible ? formatRupiah(p.kerajinan) : formatRupiah(0)}</td>
+      </tr>
+      <tr class="totalrow">
+        <td class="lbl">TRANSPORT</td><td class="colon">:</td><td class="val">${formatRupiah(p.uangTransport)}</td>
+      </tr>
+      <tr class="totalrow gajibersih">
+        <td class="lbl">GAJI BERSIH</td><td class="colon">:</td><td class="val">${formatRupiah(p.gajiBersih)}</td>
+        <td class="sp"></td><td class="sp" colspan="3" style="text-align:right">${todayStr}</td>
+      </tr>
     </table>
   `;
   card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1377,6 +1461,8 @@ function openEmpModal(idx) {
   document.getElementById('empFTanggalMasuk').value = emp.tanggalMasuk || '';
   document.getElementById('empFGajiPokok').value = emp.gajiPokok || '';
   document.getElementById('empFUpahLembur').value = emp.upahLemburPerJam || '';
+  document.getElementById('empFTunjanganFungsional').value = emp.tunjanganFungsional || '';
+  document.getElementById('empFTunjanganNatura').value = emp.tunjanganNatura || '';
   document.getElementById('empFStatus').value = emp.status || 'aktif';
   const photoEl = document.getElementById('empModalPhoto');
   photoEl.style.visibility = 'visible';
@@ -1412,6 +1498,8 @@ document.getElementById('empModalSaveBtn').addEventListener('click', async () =>
     tanggalMasuk: document.getElementById('empFTanggalMasuk').value,
     gajiPokok: Number(document.getElementById('empFGajiPokok').value) || 0,
     upahLemburPerJam: Number(document.getElementById('empFUpahLembur').value) || 0,
+    tunjanganFungsional: Number(document.getElementById('empFTunjanganFungsional').value) || 0,
+    tunjanganNatura: Number(document.getElementById('empFTunjanganNatura').value) || 0,
     status: document.getElementById('empFStatus').value,
   };
 

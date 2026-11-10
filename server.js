@@ -111,6 +111,8 @@ function migrateConfig(config) {
     if (emp.photoFilename === undefined) { emp.photoFilename = null; changed = true; }
     if (emp.gajiPokok === undefined) { emp.gajiPokok = 0; changed = true; }
     if (emp.upahLemburPerJam === undefined) { emp.upahLemburPerJam = 0; changed = true; }
+    if (emp.tunjanganFungsional === undefined) { emp.tunjanganFungsional = 0; changed = true; }
+    if (emp.tunjanganNatura === undefined) { emp.tunjanganNatura = 0; changed = true; }
     if (emp.email === undefined) { emp.email = ''; changed = true; }
     if (emp.tanggalMasuk === undefined) { emp.tanggalMasuk = ''; changed = true; }
     if (emp.status === undefined) { emp.status = 'aktif'; changed = true; }
@@ -442,6 +444,8 @@ function computePayrollSummary(records, config, from, to) {
   const result = Object.values(byEmployee).map((e) => {
     const emp = empByName[e.employee] || {};
     const gajiPokok = Number(emp.gajiPokok) || 0;
+    const tunjanganFungsional = Number(emp.tunjanganFungsional) || 0;
+    const tunjanganNatura = Number(emp.tunjanganNatura) || 0;
     const gajiHarian = gajiPokok / 30;
     const upahJam = Number(emp.upahLemburPerJam) > 0 ? Number(emp.upahLemburPerJam) : gajiPokok / 240;
 
@@ -473,7 +477,7 @@ function computePayrollSummary(records, config, from, to) {
     const lemburAwalRp = Math.round(lemburAwalJam * upahJam);
     const lemburAkhirRp = Math.round(lemburAkhirJam * upahJam);
     const lemburTambahanRp = Math.round(lemburTambahanJam * upahJam);
-    const totalPendapatan = gajiPokok + uangMakan + lemburAwalRp + lemburAkhirRp + lemburTambahanRp;
+    const totalPendapatan = gajiPokok + tunjanganFungsional + tunjanganNatura + uangMakan + lemburAwalRp + lemburAkhirRp + lemburTambahanRp;
 
     const kerajinanEligible = offBerlebih === 0 && e.terlambatKali <= (config.maksTerlambatUntukKerajinan ?? 2);
     const kerajinan = kerajinanEligible ? Math.round(totalPendapatan * 0.1) : 0;
@@ -491,7 +495,7 @@ function computePayrollSummary(records, config, from, to) {
 
     return {
       employee: e.employee,
-      gajiPokok, upahPerJam: Math.round(upahJam),
+      gajiPokok, tunjanganFungsional, tunjanganNatura, upahPerJam: Math.round(upahJam),
       hariHadir: e.hariHadir, hariCuti, hariTidakHadir, offBerlebih,
       terlambatKali: e.terlambatKali, terlambatJam, pulangCepatJam, lemburAwalJam, lemburAkhirJam,
       lemburTambahanJam, lemburTambahanRp,
@@ -681,6 +685,10 @@ function colLetter(idx) {
 }
 
 // sheets: [{ name, rows }], rows: array of array of cell (string | number). Nama sheet maks 31 karakter.
+// Style index tetap (dipakai lewat cell { v, s: XLSX_STYLE.xxx }):
+// 0 normal, 1 bold, 2 bold+underline (judul seksi), 3 bold+border-top (baris total).
+const XLSX_STYLE = { NORMAL: 0, BOLD: 1, BOLD_UNDERLINE: 2, BOLD_TOPBORDER: 3 };
+
 function buildXlsx(sheets) {
   const files = [];
   files.push({ name: '[Content_Types].xml', data: Buffer.from(
@@ -689,6 +697,7 @@ function buildXlsx(sheets) {
     `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
     `<Default Extension="xml" ContentType="application/xml"/>` +
     `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+    `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
     sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') +
     `</Types>`, 'utf8') });
 
@@ -704,20 +713,45 @@ function buildXlsx(sheets) {
     `<sheets>` + sheets.map((s, i) => `<sheet name="${xmlEscape(s.name.slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + `</sheets>` +
     `</workbook>`, 'utf8') });
 
+  // rId diurut: sheet1..sheetN dulu, lalu styles.xml setelahnya.
   files.push({ name: 'xl/_rels/workbook.xml.rels', data: Buffer.from(
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
     sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') +
+    `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
     `</Relationships>`, 'utf8') });
+
+  // Styles: font 0 normal, font 1 bold. xf 0 normal, xf 1 bold, xf 2 bold+underline,
+  // xf 3 bold dengan border atas (dipakai baris TOTAL/GAJI BERSIH).
+  files.push({ name: 'xl/styles.xml', data: Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+    `<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><u/><sz val="11"/><name val="Calibri"/></font></fonts>` +
+    `<fills count="1"><fill><patternFill patternType="none"/></fill></fills>` +
+    `<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top style="thin"><color indexed="64"/></top><bottom/><diagonal/></border></borders>` +
+    `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
+    `<cellXfs count="4">` +
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` +
+    `<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>` +
+    `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment/></xf>` +
+    `<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>` +
+    `</cellXfs>` +
+    `</styleSheet>`, 'utf8') });
 
   sheets.forEach((sheet, idx) => {
     const rowsXml = sheet.rows.map((row, rIdx) => {
       const cells = row.map((cell, cIdx) => {
         const ref = colLetter(cIdx) + (rIdx + 1);
-        if (typeof cell === 'number' && isFinite(cell)) {
-          return `<c r="${ref}"><v>${cell}</v></c>`;
+        const isObj = cell !== null && typeof cell === 'object';
+        const value = isObj ? cell.v : cell;
+        const styleAttr = isObj && cell.s ? ` s="${cell.s}"` : '';
+        if (value === null || value === undefined || value === '') {
+          return styleAttr ? `<c r="${ref}"${styleAttr}/>` : '';
         }
-        return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(cell)}</t></is></c>`;
+        if (typeof value === 'number' && isFinite(value)) {
+          return `<c r="${ref}"${styleAttr}><v>${value}</v></c>`;
+        }
+        return `<c r="${ref}"${styleAttr} t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
       }).join('');
       return `<row r="${rIdx + 1}">${cells}</row>`;
     }).join('');
@@ -812,6 +846,28 @@ function timeHHMMJakarta(isoTimestamp) {
   const d = new Date(isoTimestamp);
   const jakarta = new Date(d.getTime() + 7 * 60 * 60 * 1000);
   return jakarta.toISOString().slice(11, 16);
+}
+
+// ---------- Helper format untuk Slip Gaji (tampilan web & export .xlsx) ----------
+const BULAN_INDO = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+function formatTanggalIndo(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return `${d} ${BULAN_INDO[m - 1]} ${y}`;
+}
+function formatTanggalSlash(ymd) {
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+function formatJamKoma(n) {
+  return (Math.round(n * 10) / 10).toFixed(1).replace('.', ',');
+}
+function formatRupiahServer(n) {
+  const sign = n < 0 ? '-' : '';
+  return sign + 'Rp' + Math.abs(Math.round(n)).toLocaleString('id-ID');
+}
+// Nama sheet Excel tidak boleh mengandung \ / ? * [ ] : dan maksimal 31 karakter.
+function safeSheetName(name) {
+  return (name || 'Slip').replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31) || 'Slip';
 }
 
 // ---------- Request handler ----------
@@ -1362,13 +1418,39 @@ const server = http.createServer(async (req, res) => {
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
       const payroll = computePayrollSummary(records, config, from, to).filter((p) => selectedNames.has(p.employee));
 
-      const headerRow = ['Nama', 'Hadir', 'Telat (kali)', 'OFF Lebih', 'Cuti', 'Lembur Awal (j)', 'Lembur Akhir (j)', 'Lembur Tambahan (j)', 'Kerajinan (Rp)', 'Potongan (Rp)', 'Kasbon (Rp)', 'Gaji Bersih (Rp)'];
-      const dataRows = payroll.map((p) => [
-        p.employee, p.hariHadir, p.terlambatKali, p.offBerlebih, p.hariCuti ?? 0,
-        p.lemburAwalJam, p.lemburAkhirJam, p.lemburTambahanJam,
-        p.kerajinanEligible ? p.kerajinan : 0, p.totalPotongan, p.potonganKasbon || 0, p.gajiBersih,
-      ]);
-      const xlsxBuffer = buildXlsx([{ name: 'Slip Gaji', rows: [headerRow, ...dataRows] }]);
+      const todayStr = formatTanggalSlash(dateKeyJakarta(new Date().toISOString()));
+      const periodeStr = `${formatTanggalIndo(from)} - ${formatTanggalIndo(to)}`;
+      const B = XLSX_STYLE.BOLD, BU = XLSX_STYLE.BOLD_UNDERLINE, BT = XLSX_STYLE.BOLD_TOPBORDER;
+      const bold = (v) => ({ v, s: B });
+      const sect = (v) => ({ v, s: BU });
+      const total = (v) => ({ v, s: BT });
+
+      const sheets = payroll.map((p) => {
+        const emp = config.employees.find((e) => e.name === p.employee) || {};
+        const rows = [
+          [bold('No ID'), ':', emp.idNumber || '-', '', bold('Department'), ':', emp.position || '-'],
+          [bold('Nama'), ':', p.employee, '', bold('Periode'), ':', periodeStr],
+          [],
+          [sect('PENDAPATAN'), '', '', '', sect('POTONGAN'), '', ''],
+          [bold('Gaji Pokok'), ':', formatRupiahServer(p.gajiPokok || 0), '', bold(`Tidak Masuk (${p.offBerlebih})`), ':', formatRupiahServer(p.potonganOff)],
+          [bold('Tunjangan Fungsional'), ':', formatRupiahServer(p.tunjanganFungsional || 0), '', bold(`Terlambat (${p.terlambatKali} kali)`), ':', formatRupiahServer(p.potonganTerlambat)],
+          [bold('Tunjangan Natura'), ':', formatRupiahServer(p.tunjanganNatura || 0), '', bold('Pulang Cepat'), ':', formatRupiahServer(p.potonganPulangCepat)],
+          [bold('Uang Makan'), ':', formatRupiahServer(p.uangMakan), '', bold('Kasbon'), ':', formatRupiahServer(p.potonganKasbon || 0)],
+          [bold(`Lembur Awal (${formatJamKoma(p.lemburAwalJam)} j)`), ':', formatRupiahServer(p.lemburAwalRp)],
+          [bold(`Lembur Akhir (${formatJamKoma(p.lemburAkhirJam)} j)`), ':', formatRupiahServer(p.lemburAkhirRp)],
+          [bold(`Lembur Tambahan (${formatJamKoma(p.lemburTambahanJam)} j)`), ':', formatRupiahServer(p.lemburTambahanRp)],
+          [],
+          [total('TOTAL PENDAPATAN'), total(':'), total(formatRupiahServer(p.totalPendapatan)), '', total('TOTAL POTONGAN'), total(':'), total(formatRupiahServer(p.totalPotongan))],
+          [],
+          [total('KERAJINAN'), total(':'), total(formatRupiahServer(p.kerajinanEligible ? p.kerajinan : 0))],
+          [total('TRANSPORT'), total(':'), total(formatRupiahServer(p.uangTransport))],
+          [total('GAJI BERSIH'), total(':'), total(formatRupiahServer(p.gajiBersih)), '', '', '', total(todayStr)],
+        ];
+        return { name: safeSheetName(p.employee), rows };
+      });
+      if (sheets.length === 0) sheets.push({ name: 'Slip Gaji', rows: [['Tidak ada data']] });
+
+      const xlsxBuffer = buildXlsx(sheets);
       res.writeHead(200, {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="slip-gaji-${from}_${to}.xlsx"`,
