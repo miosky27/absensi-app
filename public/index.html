@@ -371,7 +371,7 @@ function initials(name) {
 function showStatus(el, msg, cls) { el.textContent = msg; el.className = 'status ' + cls; }
 function formatRupiah(n) {
   const num = Number(n) || 0;
-  return (num < 0 ? '-' : '') + 'Rp' + Math.abs(Math.round(num)).toLocaleString('id-ID');
+  return (num < 0 ? '-' : '') + 'Rp ' + Math.abs(Math.round(num)).toLocaleString('id-ID');
 }
 const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 const BULAN_PENDEK = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];

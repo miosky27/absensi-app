@@ -1148,7 +1148,7 @@ function roundJamBertingkat(menit) {
 }
 function formatRupiahServer(n) {
   const sign = n < 0 ? '-' : '';
-  return sign + 'Rp' + Math.abs(Math.round(n)).toLocaleString('id-ID');
+  return sign + 'Rp ' + Math.abs(Math.round(n)).toLocaleString('id-ID');
 }
 // Tanggal 1 s.d. akhir bulan dari "YYYY-MM" (dipakai untuk periode Laporan Kasbon, Task #49:
 // periode kasbon = 1 bulan kalender penuh, terpisah dari periode gajian 26-25).

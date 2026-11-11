@@ -574,7 +574,7 @@
             <span class="badge pending" id="periodeTerkunciBadge">Periode belum dikunci</span>
             <button class="btn" id="kunciPeriodeBtn" type="button"><svg class="ic" id="kunciPeriodeIcon"><use href="#i-lock"/></svg><span id="kunciPeriodeLabel">Kunci Periode</span></button>
           </div>
-          <div class="summary-line"><span id="gajiSummaryLeft"></span><span class="total">Total gaji bersih<b id="gajiTotalBersih">Rp0</b></span></div>
+          <div class="summary-line"><span id="gajiSummaryLeft"></span><span class="total">Total gaji bersih<b id="gajiTotalBersih">Rp 0</b></span></div>
           <div class="empty" id="gajiEmpty"></div>
           <div class="table-wrap" style="margin-top:6px">
           <table id="gajiTable" class="rtable">
@@ -1328,7 +1328,7 @@ function defaultPayrollPeriod() {
 
 function formatRupiah(n) {
   const sign = n < 0 ? '-' : '';
-  return sign + 'Rp' + Math.abs(Math.round(n)).toLocaleString('id-ID');
+  return sign + 'Rp ' + Math.abs(Math.round(n)).toLocaleString('id-ID');
 }
 
 // ---- Notifikasi Admin (bell icon) ----
@@ -1434,7 +1434,7 @@ async function loadGaji() {
         <td class="num">${p.terlambatKali}</td><td class="num">${p.offBerlebih}</td>
         <td class="num" title="Sakit ${p.hariSakit ?? 0} · Izin ${p.hariIzin ?? 0} · Cuti ${p.hariCutiSaja ?? 0}">${(p.hariSakit ?? 0) + (p.hariIzin ?? 0) + (p.hariCutiSaja ?? p.hariCuti ?? 0)}</td>
         <td class="num">${p.lemburAwalJam}</td><td class="num">${p.lemburAkhirJam}</td><td class="num">${p.lemburTambahanJam}</td>
-        <td class="num">${p.kerajinanEligible ? formatRupiah(p.kerajinan) : 'Rp0'}</td>
+        <td class="num">${p.kerajinanEligible ? formatRupiah(p.kerajinan) : 'Rp 0'}</td>
         <td class="num">${formatRupiah(p.totalPotongan)}</td>
         <td class="num">${formatRupiah(p.potonganKasbon || 0)}</td>
         <td class="num strong">${formatRupiah(p.gajiBersih)}</td>
