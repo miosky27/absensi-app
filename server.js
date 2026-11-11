@@ -1411,6 +1411,28 @@ function logFailedAttempt({ phone, employee, type, reason, detail, lat, lng, dis
   });
   // Simpan 2000 terakhir saja agar file tidak membengkak.
   writeJSON(FAILED_ATTEMPTS_FILE, list.slice(-2000));
+
+  // Notifikasi ke admin maksimal 1 kali per karyawan per hari, supaya admin tahu
+  // kalau karyawan tidak absen karena kendala aplikasi, bukan karena tidak hadir.
+  const who = employee || phone;
+  if (who) {
+    const dateKey = dateKeyJakarta(serverTime);
+    const refId = `absen-gagal:${who}:${dateKey}`;
+    const sudahAda = readJSON(ADMIN_NOTIFICATIONS_FILE).some((n) => n.refId === refId);
+    if (!sudahAda) {
+      const alasan = reasonLabelAbsen(reason);
+      addAdminNotification(`${who} gagal absen hari ini (${alasan}). Kemungkinan karena kendala aplikasi, bukan karena tidak hadir.`, 'absen_gagal', refId);
+    }
+  }
+}
+
+// Label alasan absen gagal (dipakai notifikasi admin dan dashboard).
+function reasonLabelAbsen(reason) {
+  return ({
+    telepon_tidak_terdaftar: 'nomor tidak terdaftar', nonaktif: 'akun non-aktif', jarak_terlalu_jauh: 'terlalu jauh dari lokasi',
+    shift_kosong: 'shift belum dipilih', shift_tidak_dikenali: 'shift tidak dikenali', lokasi_belum_diatur: 'lokasi kantor belum diatur',
+    data_tidak_lengkap: 'data tidak lengkap', gps: 'GPS gagal', kamera: 'kamera gagal',
+  })[reason] || reason;
 }
 
     // Laporan dari app karyawan saat GPS atau kamera gagal (request tidak sampai ke /api/checkin).
@@ -2650,15 +2672,23 @@ function logFailedAttempt({ phone, employee, type, reason, detail, lat, lng, dis
         shift_kosong: 'Shift belum dipilih', shift_tidak_dikenali: 'Shift tidak dikenali', lokasi_belum_diatur: 'Lokasi kantor belum diatur',
         data_tidak_lengkap: 'Data tidak lengkap', gps: 'GPS gagal', kamera: 'Kamera gagal',
       };
-      const absenGagalHariIni = readJSON(FAILED_ATTEMPTS_FILE)
+      // Satu baris per karyawan + alasan (kalau alasannya sama, cukup ditampilkan 1 kali).
+      const gagalGroup = {};
+      readJSON(FAILED_ATTEMPTS_FILE)
         .filter((f) => f.dateKey === todayKey)
         .sort((a, b) => (a.timeHHMM < b.timeHHMM ? 1 : -1))
-        .slice(0, 50)
-        .map((f) => ({
-          id: f.id, employee: f.employee || f.phone || '-', type: f.type, timeHHMM: f.timeHHMM,
-          reason: f.reason, reasonLabel: reasonLabel[f.reason] || f.reason, detail: f.detail,
-          distanceMeters: f.distanceMeters, nearestLocation: f.nearestLocation,
-        }));
+        .forEach((f) => {
+          const key = `${f.employee || f.phone}|${f.reason}`;
+          if (!gagalGroup[key]) {
+            gagalGroup[key] = {
+              id: f.id, employee: f.employee || f.phone || '-', type: f.type, timeHHMM: f.timeHHMM,
+              reason: f.reason, reasonLabel: reasonLabel[f.reason] || f.reason, detail: f.detail,
+              distanceMeters: f.distanceMeters, nearestLocation: f.nearestLocation, count: 0,
+            };
+          }
+          gagalGroup[key].count += 1;
+        });
+      const absenGagalHariIni = Object.values(gagalGroup).slice(0, 50);
       return sendJSON(res, 200, {
         date: todayKey,
         absenGagalHariIni,

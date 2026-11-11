@@ -1705,8 +1705,8 @@ function renderAbsenGagal(list) {
   if (!list.length) { box.innerHTML = ''; empty.textContent = 'Belum ada percobaan absen yang gagal hari ini.'; return; }
   empty.textContent = '';
   box.innerHTML = list.slice(0, 10).map((f) => `
-    <div class="rcard"><div class="rcard-top">${personCell(f.employee, `${f.timeHHMM} · ${f.detail || ''}`)}<span class="badge pending">${esc(f.reasonLabel)}</span></div></div>
-  `).join('') + (list.length > 10 ? `<div class="page-sub" style="margin-top:8px">+${list.length - 10} percobaan lain</div>` : '');
+    <div class="rcard"><div class="rcard-top">${personCell(f.employee, `${f.timeHHMM} · ${f.detail || ''}${f.count > 1 ? ` · ${f.count}x` : ''}`)}<span class="badge pending">${esc(f.reasonLabel)}</span></div></div>
+  `).join('') + (list.length > 10 ? `<div class="page-sub" style="margin-top:8px">+${list.length - 10} lainnya</div>` : '');
 }
 
 async function loadDashboard() {
