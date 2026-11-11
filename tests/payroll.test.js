@@ -183,3 +183,62 @@ test('kunci periode menyimpan angka gaji dan memblokir edit absen', async (t) =>
   const overlap = await s.send('POST', '/api/payroll/lock', { from: '2026-10-20', to: '2026-11-25' });
   assert.equal(overlap.status, 400, 'periode tumpang tindih ditolak');
 });
+
+test('sesi login admin: token acak, logout mencabut token', async (t) => {
+  const s = await startServer();
+  t.after(s.stop);
+  const ok = await fetch(s.base + '/api/config', { headers: s.auth });
+  assert.equal(ok.status, 200);
+  const cfg = await ok.json();
+  assert.equal(cfg.adminPassword, undefined, 'password admin tidak dikirim ke browser');
+  assert.equal(cfg.ownerPasswordHash, undefined, 'hash password owner tidak dikirim ke browser');
+  assert.notEqual(s.auth.Authorization.slice(7).length, 0);
+  const sessionsFile = JSON.stringify(s.read('sessions.json'));
+  assert.ok(!sessionsFile.includes(s.auth.Authorization.slice(7)), 'token asli tidak disimpan di server');
+
+  await fetch(s.base + '/api/logout', { method: 'POST', headers: s.auth });
+  const after = await fetch(s.base + '/api/config', { headers: s.auth });
+  assert.equal(after.status, 401, 'token tidak berlaku setelah logout');
+});
+
+test('buka kunci periode hanya dengan password owner', async (t) => {
+  const s = await startServer();
+  t.after(s.stop);
+  s.addEmployee('Eka', '0815', '2025-01-01');
+  s.write('records.json', []);
+  await s.send('POST', '/api/payroll/lock', { from: FROM, to: TO });
+  const unlock = (pw) => fetch(`${s.base}/api/payroll/lock?from=${FROM}&to=${TO}`, {
+    method: 'DELETE', headers: { ...s.auth, ...(pw ? { 'X-Owner-Password': pw } : {}) },
+  });
+
+  assert.equal((await unlock('apa-saja')).status, 403, 'belum ada password owner -> ditolak');
+  assert.equal((await s.send('POST', '/api/owner-password', { newPassword: 'admin123' })).status, 400, 'tidak boleh sama dengan password admin');
+  assert.equal((await s.send('POST', '/api/owner-password', { newPassword: 'rahasia-owner' })).status, 200);
+  assert.equal((await s.send('POST', '/api/owner-password', { newPassword: 'ganti-tanpa-lama' })).status, 403, 'ganti butuh password lama');
+  assert.equal((await s.send('POST', '/api/config', { ownerPasswordHash: 'x' })).status, 200);
+  assert.equal((await unlock('salah')).status, 403);
+  assert.equal((await unlock('rahasia-owner')).status, 200, 'password owner benar -> kunci terbuka');
+  assert.equal((await s.payrollOf('Eka')).locked, false);
+});
+
+test('pengingat lupa absen muncul sekali di notifikasi karyawan', async (t) => {
+  const s = await startServer();
+  t.after(s.stop);
+  s.addEmployee('Fajar', '0816', '2025-01-01');
+  const dk = (offset) => {
+    const d = new Date(Date.now() + 7 * 3600 * 1000); // tanggal Jakarta
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
+  s.write('records.json', [
+    rec('Fajar', 'masuk', dk(-2), '08:00', { phone: '0816' }), // lupa pulang
+    rec('Fajar', 'keluar', dk(-3), '16:05', { phone: '0816' }), // lupa masuk
+    rec('Fajar', 'masuk', dk(-4), '08:00', { phone: '0816' }), rec('Fajar', 'keluar', dk(-4), '16:00', { phone: '0816' }),
+  ]);
+  const first = (await s.get('/api/my-notifications?phone=0816')).notifications.filter((n) => n.type === 'lupa_absen');
+  const second = (await s.get('/api/my-notifications?phone=0816')).notifications.filter((n) => n.type === 'lupa_absen');
+  assert.equal(first.length, 2);
+  assert.equal(second.length, 2, 'tidak dobel saat aplikasi dibuka lagi');
+  assert.ok(first.some((n) => n.message.includes('lupa absen pulang') && n.message.includes('16:00')));
+  assert.ok(first.some((n) => n.message.includes('lupa absen masuk') && n.message.includes('08:00')));
+});

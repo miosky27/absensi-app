@@ -23,6 +23,7 @@ const KASBON_PAYMENTS_FILE = path.join(DATA_DIR, 'kasbon_payments.json'); // cic
 const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json'); // pemberitahuan untuk karyawan (status cuti/kasbon dll)
 const ADMIN_NOTIFICATIONS_FILE = path.join(DATA_DIR, 'admin_notifications.json'); // pemberitahuan untuk admin (pengajuan cuti/kasbon baru)
 const PAYROLL_LOCKS_FILE = path.join(DATA_DIR, 'payroll_locks.json'); // periode gaji yang sudah dikunci + hasil hitungannya
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json'); // sesi login admin (hash token + masa berlaku)
 
 const PORT = process.env.PORT || 3000;
 
@@ -40,6 +41,7 @@ ensureFile(KASBON_PAYMENTS_FILE, []);
 ensureFile(NOTIFICATIONS_FILE, []);
 ensureFile(ADMIN_NOTIFICATIONS_FILE, []);
 ensureFile(PAYROLL_LOCKS_FILE, []);
+ensureFile(SESSIONS_FILE, []);
 ensureFile(CONFIG_FILE, {
   // Beberapa lokasi kantor/cabang, masing-masing punya daftar shift sendiri.
   // Karyawan memilih sendiri shift yang mereka jalani saat absen masuk.
@@ -664,10 +666,52 @@ function sendJSON(res, status, obj) {
   res.end(body);
 }
 
-function checkAdmin(req, config) {
+// ---------- Sesi login admin ----------
+// Setiap login membuat token acak baru yang berlaku 7 hari. Yang disimpan di server hanya
+// hash token-nya, jadi isi file sesi tidak bisa dipakai untuk login. Logout atau ganti password
+// admin mencabut sesi. Disimpan di file supaya admin tidak ter-logout tiap server restart.
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+function hashToken(token) { return crypto.createHash('sha256').update(String(token)).digest('hex'); }
+function activeSessions() { return readJSON(SESSIONS_FILE).filter((x) => x.expiresAt > Date.now()); }
+function createAdminSession() {
+  const token = crypto.randomBytes(32).toString('hex');
+  const sessions = activeSessions();
+  sessions.push({ tokenHash: hashToken(token), createdAt: Date.now(), expiresAt: Date.now() + SESSION_TTL_MS });
+  writeJSON(SESSIONS_FILE, sessions);
+  return token;
+}
+function isValidAdminToken(token) {
+  if (!token) return false;
+  const h = hashToken(token);
+  return activeSessions().some((x) => x.tokenHash === h);
+}
+function revokeAdminSession(token) {
+  const h = hashToken(token);
+  writeJSON(SESSIONS_FILE, activeSessions().filter((x) => x.tokenHash !== h));
+}
+function revokeOtherAdminSessions(keepToken) {
+  const h = hashToken(keepToken);
+  writeJSON(SESSIONS_FILE, activeSessions().filter((x) => x.tokenHash === h));
+}
+function bearerToken(req) {
   const auth = req.headers['authorization'] || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  return token === hashPassword(config.adminPassword);
+  return auth.startsWith('Bearer ') ? auth.slice(7) : '';
+}
+function checkAdmin(req, config) {
+  return isValidAdminToken(bearerToken(req));
+}
+
+// ---------- Password owner ----------
+// Password terpisah dari password admin, khusus untuk tindakan owner (buka kunci periode gaji).
+// Disimpan sebagai hash scrypt + salt, tidak pernah dikirim ke browser.
+function hashOwnerPassword(pw, salt) {
+  return crypto.scryptSync(String(pw), salt, 32).toString('hex');
+}
+function checkOwnerPassword(config, pw) {
+  if (!config.ownerPasswordHash || !config.ownerPasswordSalt || !pw) return false;
+  const a = Buffer.from(hashOwnerPassword(pw, config.ownerPasswordSalt), 'hex');
+  const b = Buffer.from(config.ownerPasswordHash, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function hashPassword(pw) {
@@ -873,6 +917,54 @@ function addNotification(phone, message, type) {
     createdAt: new Date().toISOString(),
   });
   writeJSON(NOTIFICATIONS_FILE, notifications);
+}
+
+// Pengingat lupa absen untuk karyawan (muncul di lonceng aplikasi karyawan). Dibuat saat
+// karyawan membuka aplikasi, karena server tidak punya penjadwal sendiri. Setiap hari hanya
+// diingatkan sekali (ditandai refKey). Yang dicek: 7 hari terakhir yang cuma punya absen masuk
+// atau cuma absen pulang, plus hari ini kalau sudah lewat 1 jam dari jam pulang shift tapi
+// belum absen pulang.
+function generateLupaAbsenReminders(phone, config) {
+  const emp = config.employees.find((e) => e.phone === phone);
+  if (!emp) return;
+  const todayKey = dateKeyJakarta(new Date().toISOString());
+  const fromKey = shiftDateKey(todayKey, -7);
+  const byDate = {};
+  for (const r of readJSON(RECORDS_FILE)) {
+    if (r.phone !== phone && r.employee !== emp.name) continue;
+    if (r.dateKey < fromKey || r.dateKey > todayKey) continue;
+    if (r.type !== 'masuk' && r.type !== 'keluar') continue;
+    if (!byDate[r.dateKey]) byDate[r.dateKey] = {};
+    byDate[r.dateKey][r.type] = r;
+  }
+  const notifications = readJSON(NOTIFICATIONS_FILE);
+  const existing = new Set(notifications.filter((n) => n.phone === phone && n.refKey).map((n) => n.refKey));
+  const nowMenit = timeToMinutes(timeHHMMJakarta(new Date().toISOString()));
+  let added = false;
+  const push = (refKey, message) => {
+    if (existing.has(refKey)) return;
+    notifications.push({
+      id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      phone, message, type: 'lupa_absen', read: false, refKey, createdAt: new Date().toISOString(),
+    });
+    existing.add(refKey);
+    added = true;
+  };
+  for (const [dk, g] of Object.entries(byDate).sort()) {
+    const tgl = formatTanggalIndo(dk);
+    if (dk < todayKey && g.masuk && !g.keluar) {
+      const jam = g.masuk.shiftEnd ? ` (${g.masuk.shiftEnd})` : '';
+      push(`lupa-absen|${dk}`, `Kamu lupa absen pulang tanggal ${tgl}. Jam pulang dicatat otomatis sesuai shift${jam}. Hubungi admin kalau jamnya berbeda.`);
+    } else if (g.keluar && !g.masuk) {
+      const sh = inferShiftFromKeluar(g.keluar.nearestLocation, timeToMinutes(g.keluar.timeHHMM), config);
+      const jam = sh ? ` (${sh.startTime})` : '';
+      push(`lupa-absen|${dk}`, `Kamu lupa absen masuk tanggal ${tgl}. Jam masuk dicatat otomatis sesuai shift${jam}. Hubungi admin kalau jamnya berbeda.`);
+    } else if (dk === todayKey && g.masuk && !g.keluar && g.masuk.shiftEnd
+      && nowMenit >= timeToMinutes(g.masuk.shiftEnd) + 60) {
+      push(`belum-pulang|${dk}`, 'Kamu belum absen pulang hari ini. Jangan lupa absen pulang ya.');
+    }
+  }
+  if (added) writeJSON(NOTIFICATIONS_FILE, notifications);
 }
 
 // Buat notifikasi baru untuk admin (dipakai saat karyawan ajukan cuti/izin atau kasbon baru).
@@ -1171,9 +1263,32 @@ const server = http.createServer(async (req, res) => {
       const emailOk = String(body.email || '').trim().toLowerCase() === String(config.adminEmail || '').trim().toLowerCase();
       const passwordOk = body.password === config.adminPassword;
       if (emailOk && passwordOk) {
-        return sendJSON(res, 200, { token: hashPassword(config.adminPassword) });
+        return sendJSON(res, 200, { token: createAdminSession() });
       }
       return sendJSON(res, 401, { error: 'Email atau password salah' });
+    }
+
+    if (pathName === '/api/logout' && req.method === 'POST') {
+      const t = bearerToken(req);
+      if (t) revokeAdminSession(t);
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // Buat / ganti password owner. Kalau sudah pernah dibuat, wajib isi password owner lama.
+    if (pathName === '/api/owner-password' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const newPassword = String(body.newPassword || '');
+      if (newPassword.length < 6) return sendJSON(res, 400, { error: 'Password owner minimal 6 karakter.' });
+      if (newPassword === config.adminPassword) return sendJSON(res, 400, { error: 'Password owner harus berbeda dari password admin.' });
+      const fresh = readJSON(CONFIG_FILE);
+      if (fresh.ownerPasswordHash && !checkOwnerPassword(fresh, body.currentPassword)) {
+        return sendJSON(res, 403, { error: 'Password owner lama salah.' });
+      }
+      fresh.ownerPasswordSalt = crypto.randomBytes(16).toString('hex');
+      fresh.ownerPasswordHash = hashOwnerPassword(newPassword, fresh.ownerPasswordSalt);
+      writeJSON(CONFIG_FILE, fresh);
+      return sendJSON(res, 200, { ok: true });
     }
 
     // ---- Absen (check-in / check-out / lembur masuk / lembur pulang) ----
@@ -1262,7 +1377,7 @@ const server = http.createServer(async (req, res) => {
     if (pathName.startsWith('/api/photo/') && req.method === 'GET') {
       // Lindungi foto dengan token admin sederhana lewat query ?t=
       const token = url.searchParams.get('t');
-      if (token !== hashPassword(config.adminPassword)) {
+      if (!isValidAdminToken(token)) {
         res.writeHead(403);
         return res.end('Forbidden');
       }
@@ -1598,6 +1713,8 @@ const server = http.createServer(async (req, res) => {
     // Buka kunci periode: hapus hasil tersimpan, hitungan kembali mengikuti data absen terbaru.
     if (pathName === '/api/payroll/lock' && req.method === 'DELETE') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      if (!config.ownerPasswordHash) return sendJSON(res, 403, { error: 'Password owner belum dibuat. Buat dulu di menu Pengaturan.' });
+      if (!checkOwnerPassword(config, req.headers['x-owner-password'])) return sendJSON(res, 403, { error: 'Password owner salah.' });
       const from = url.searchParams.get('from');
       const to = url.searchParams.get('to');
       const locks = readJSON(PAYROLL_LOCKS_FILE);
@@ -1850,18 +1967,22 @@ const server = http.createServer(async (req, res) => {
 
     if (pathName === '/api/config' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
-      const { adminPassword, ...safeConfig } = config;
-      return sendJSON(res, 200, safeConfig);
+      const { adminPassword, ownerPasswordHash, ownerPasswordSalt, ...safeConfig } = config;
+      return sendJSON(res, 200, { ...safeConfig, ownerPasswordSet: !!ownerPasswordHash });
     }
 
     if (pathName === '/api/config' && req.method === 'POST') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const body = JSON.parse((await readBody(req)).toString('utf8'));
+      // Password owner hanya bisa diubah lewat /api/owner-password (butuh password owner lama).
+      delete body.ownerPasswordHash; delete body.ownerPasswordSalt; delete body.ownerPasswordSet;
       const updated = { ...config, ...body };
       // Jangan biarkan password/email kosong tak sengaja
       if (!updated.adminPassword) updated.adminPassword = config.adminPassword;
       if (!updated.adminEmail) updated.adminEmail = config.adminEmail;
       writeJSON(CONFIG_FILE, updated);
+      // Ganti password admin -> cabut semua sesi lain (perangkat lain harus login ulang).
+      if (updated.adminPassword !== config.adminPassword) revokeOtherAdminSessions(bearerToken(req));
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -2156,6 +2277,7 @@ const server = http.createServer(async (req, res) => {
     // Riwayat notifikasi milik karyawan sendiri (status pengajuan cuti/izin & kasbon).
     if (pathName === '/api/my-notifications' && req.method === 'GET') {
       const phone = String(url.searchParams.get('phone') || '').trim();
+      generateLupaAbsenReminders(phone, config);
       const notifications = readJSON(NOTIFICATIONS_FILE)
         .filter((n) => n.phone === phone)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));

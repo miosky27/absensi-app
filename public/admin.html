@@ -452,14 +452,19 @@
           <table id="gajiTable">
             <thead><tr>
               <th><input type="checkbox" id="gajiSelectAll" /></th>
-              <th>Nama</th><th>Hadir</th><th>Telat (kali)</th><th>OFF Lebih</th><th>Cuti</th>
+              <th>Nama</th><th>Hadir</th><th>Telat (kali)</th><th>OFF Lebih</th><th style="white-space:nowrap">Sakit/Izin/Cuti</th>
               <th>Lembur Awal (j)</th><th>Lembur Akhir (j)</th><th>Lembur Tambahan (j)</th><th>Kerajinan</th>
               <th>Potongan</th><th>Kasbon</th><th>Gaji Bersih</th><th></th>
             </tr></thead>
             <tbody></tbody>
           </table>
           </div>
-          <div class="hint" style="margin-top:10px">Kerajinan (bonus 10%) hangus jika OFF melebihi jatah atau terlambat lebih dari batas. Potongan = OFF berlebih + terlambat + pulang cepat. Kasbon = cicilan/pelunasan kasbon dalam periode ini.</div>
+          <div id="gajiPager" style="display:none;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px">
+            <span id="gajiPageInfo" style="font-size:12px;color:#777"></span>
+            <button class="btn secondary small icon-pager-btn" type="button" id="gajiPrevBtn" title="Sebelumnya" aria-label="Sebelumnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="btn secondary small icon-pager-btn" type="button" id="gajiNextBtn" title="Selanjutnya" aria-label="Selanjutnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
+          <div class="hint" style="margin-top:10px">Hadir sudah termasuk hari lupa absen (cuma absen masuk atau cuma absen pulang). Kerajinan (bonus 10%) hangus jika OFF melebihi jatah atau terlambat lebih dari batas. Potongan = OFF berlebih + terlambat + pulang cepat. Kasbon = cicilan/pelunasan kasbon dalam periode ini.</div>
         </div>
         <div class="card" id="slipDetailCard" style="display:none"></div>
 
@@ -509,6 +514,12 @@
           </table>
           </div>
           <div class="hint" id="dailyEmpty"></div>
+          <div id="dailyPager" style="display:none;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px">
+            <span id="dailyPageInfo" style="font-size:12px;color:#777"></span>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dailyPrevBtn" title="Sebelumnya" aria-label="Sebelumnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="btn secondary small icon-pager-btn" type="button" id="dailyNextBtn" title="Selanjutnya" aria-label="Selanjutnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
+
         </div>
 
         <div id="sub-bulanan" class="card" style="display:none">
@@ -524,6 +535,12 @@
             <tbody></tbody>
           </table>
           </div>
+          <div id="rekapPager" style="display:none;justify-content:flex-end;align-items:center;gap:10px;margin-top:10px">
+            <span id="rekapPageInfo" style="font-size:12px;color:#777"></span>
+            <button class="btn secondary small icon-pager-btn" type="button" id="rekapPrevBtn" title="Sebelumnya" aria-label="Sebelumnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="btn secondary small icon-pager-btn" type="button" id="rekapNextBtn" title="Selanjutnya" aria-label="Selanjutnya"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
+
         </div>
 
         <div id="sub-export" class="card" style="display:none">
@@ -593,6 +610,17 @@
         <div class="field" style="margin-top:16px"><label>Ganti Email Admin (kosongkan jika tidak diubah)</label><input type="email" id="cfgEmail" placeholder="nama@email.com" /></div>
         <div class="field"><label>Ganti Password Admin (kosongkan jika tidak diubah)</label><input type="password" id="cfgPassword" /></div>
 
+        <div class="section-title" style="margin-top:28px">Password Owner</div>
+        <div class="hint" id="ownerPwHint">Password khusus owner, terpisah dari password admin. Dipakai untuk membuka kunci periode gaji.</div>
+        <div class="loc-row" style="margin-top:8px">
+          <div class="field" style="flex:1;margin-bottom:0" id="ownerPwCurrentField"><label>Password owner lama</label><input type="password" id="ownerPwCurrent" autocomplete="current-password" /></div>
+          <div class="field" style="flex:1;margin-bottom:0"><label id="ownerPwNewLabel">Password owner baru (min. 6 karakter)</label><input type="password" id="ownerPwNew" autocomplete="new-password" /></div>
+        </div>
+        <div style="margin-top:10px">
+          <button class="btn secondary" id="saveOwnerPwBtn" type="button">Simpan Password Owner</button>
+          <span id="ownerPwMsg" style="margin-left:10px;font-size:13px"></span>
+        </div>
+
         <div class="section-title" style="margin-top:28px">Backup Data</div>
         <div class="hint">Unduh semua data absensi, gaji, kasbon, cuti/izin, dan foto dalam satu file .zip. Simpan di tempat aman (misalnya Google Drive) secara rutin.</div>
         <div style="margin-top:10px">
@@ -616,6 +644,18 @@
 let token = localStorage.getItem('absensi_admin_token') || '';
 
 function authHeaders() { return { Authorization: 'Bearer ' + token }; }
+// Sesi login berlaku 7 hari. Kalau sudah habis/dicabut, server membalas 401: kembali ke layar login.
+const _origFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const res = await _origFetch(...args);
+  const u = String(args[0] && args[0].url ? args[0].url : args[0]);
+  if (res.status === 401 && token && u.startsWith('/api/') && !u.startsWith('/api/login')) {
+    token = '';
+    localStorage.removeItem('absensi_admin_token');
+    location.reload();
+  }
+  return res;
+};
 
 async function tryAutoLogin() {
   if (!token) return;
@@ -644,6 +684,7 @@ document.getElementById('pwInput').addEventListener('keydown', (e) => {
 });
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
+  if (token) fetch('/api/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
   localStorage.removeItem('absensi_admin_token');
   token = '';
   document.getElementById('appArea').style.display = 'none';
@@ -801,11 +842,17 @@ function renderExportEmpList() {
   updateExportSelectedCount();
 }
 
+// Jam yang kosong karena lupa absen ditampilkan sesuai jadwal shift, dengan tanda "lupa absen".
+function lupaAbsenText(info) {
+  return `<span style="color:#777" title="Diisi otomatis sesuai jadwal ${info.shift || 'shift'}">${info.jam}</span> <span class="badge" style="background:#fff4e0;color:#b06000">Lupa absen</span>`;
+}
+
 async function loadDaily() {
   const date = document.getElementById('dateInput').value;
   const res = await fetch('/api/records?date=' + date, { headers: authHeaders() });
   const data = await res.json();
   const records = data.records || [];
+  const lupaAbsen = data.lupaAbsen || {};
   renderSummary(records);
 
   // Kelompokkan record per karyawan untuk tanggal yang dipilih (satu baris per karyawan,
@@ -849,8 +896,8 @@ async function loadDaily() {
     tr.innerHTML = `
       <td>${name}</td>
       <td>${emp.idNumber || '—'}</td>
-      <td>${g.masuk ? `${jamText(g, 'masuk', g.masuk.timeHHMM)} ${attendanceStatusBadge(g.masuk)}` : '<span class="badge absent">Tidak Absen</span>'}${editBtn(g, 'masuk')}${deleteBtn(g, 'masuk')}</td>
-      <td>${g.keluar ? `${jamText(g, 'keluar', g.keluar.timeHHMM)} ${attendanceStatusBadge(g.keluar)}` : '—'}${editBtn(g, 'keluar')}${deleteBtn(g, 'keluar')}</td>
+      <td>${g.masuk ? `${jamText(g, 'masuk', g.masuk.timeHHMM)} ${attendanceStatusBadge(g.masuk)}` : (lupaAbsen[name] && lupaAbsen[name].type === 'masuk' ? lupaAbsenText(lupaAbsen[name]) : '<span class="badge absent">Tidak Absen</span>')}${editBtn(g, 'masuk')}${deleteBtn(g, 'masuk')}</td>
+      <td>${g.keluar ? `${jamText(g, 'keluar', g.keluar.timeHHMM)} ${attendanceStatusBadge(g.keluar)}` : (lupaAbsen[name] && lupaAbsen[name].type === 'keluar' ? lupaAbsenText(lupaAbsen[name]) : '—')}${editBtn(g, 'keluar')}${deleteBtn(g, 'keluar')}</td>
       <td>${g.lembur_masuk ? `${jamText(g, 'lembur_masuk', g.lembur_masuk.timeHHMM)} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_masuk')}${deleteBtn(g, 'lembur_masuk')}</td>
       <td>${g.lembur_keluar ? `${jamText(g, 'lembur_keluar', g.lembur_keluar.timeHHMM)} <span class="badge lembur">Lembur</span>` : '—'}${editBtn(g, 'lembur_keluar')}${deleteBtn(g, 'lembur_keluar')}</td>
     `;
@@ -858,6 +905,7 @@ async function loadDaily() {
   }
 
   document.getElementById('dailyEmpty').textContent = allNames.length === 0 ? 'Belum ada data karyawan.' : '';
+  dailyPager.refresh();
 
   const tipeLabel = { masuk: 'Masuk', keluar: 'Pulang', lembur_masuk: 'Lembur Masuk', lembur_keluar: 'Lembur Pulang' };
   tbody.querySelectorAll('[data-manualedit]').forEach((btn) => {
@@ -1088,7 +1136,7 @@ async function loadGaji() {
       tr.style.cursor = 'pointer';
       tr.innerHTML = `
         <td><input type="checkbox" class="gaji-row-check" data-phone="${emp ? emp.phone : ''}" ${emp ? '' : 'disabled'} /></td>
-        <td>${p.employee}</td><td>${p.hariHadir}</td><td>${p.terlambatKali}</td><td>${p.offBerlebih}</td><td>${p.hariCuti ?? 0}</td>
+        <td>${p.employee}</td><td>${p.hariHadir}${p.lupaAbsenHari ? `<div style="font-size:11px;color:#b06000">${p.lupaAbsenHari} lupa absen</div>` : ''}</td><td>${p.terlambatKali}</td><td>${p.offBerlebih}</td><td style="white-space:nowrap">${p.hariSakit ?? 0} / ${p.hariIzin ?? 0} / ${p.hariCutiSaja ?? p.hariCuti ?? 0}</td>
         <td>${p.lemburAwalJam}</td><td>${p.lemburAkhirJam}</td><td>${p.lemburTambahanJam}</td>
         <td>${p.kerajinanEligible ? formatRupiah(p.kerajinan) : '-'}</td>
         <td style="color:#c5221f">${formatRupiah(p.totalPotongan)}</td>
@@ -1102,6 +1150,7 @@ async function loadGaji() {
       btn.addEventListener('click', () => showSlipDetail(lastPayroll[Number(btn.dataset.slip)], from, to));
     });
     document.getElementById('gajiSelectAll').checked = false;
+    gajiPager.refresh();
     if (data.payroll.length === 0) emptyEl.textContent = 'Belum ada karyawan.';
   } catch (e) {
     emptyEl.textContent = 'Gagal memuat: ' + e.message;
@@ -1128,9 +1177,14 @@ document.getElementById('kunciPeriodeBtn').addEventListener('click', async () =>
     ? `Buka kunci periode ${from} s.d. ${to}? Angka slip akan dihitung ulang mengikuti data absen terbaru.`
     : `Kunci periode ${from} s.d. ${to}? Angka slip akan disimpan dan absen di periode ini tidak bisa diubah sampai kuncinya dibuka.`;
   if (!confirm(pesan)) return;
+  let ownerPw = '';
+  if (gajiPeriodeTerkunci) {
+    ownerPw = prompt('Masukkan password owner untuk membuka kunci:');
+    if (!ownerPw) return;
+  }
   try {
     const res = gajiPeriodeTerkunci
-      ? await fetch(`/api/payroll/lock?from=${from}&to=${to}`, { method: 'DELETE', headers: authHeaders() })
+      ? await fetch(`/api/payroll/lock?from=${from}&to=${to}`, { method: 'DELETE', headers: { ...authHeaders(), 'X-Owner-Password': ownerPw } })
       : await fetch('/api/payroll/lock', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { alert(data.error || 'Gagal mengubah kunci periode.'); return; }
@@ -1275,7 +1329,31 @@ async function loadMonthly() {
     `;
     tbody.appendChild(tr);
   }
+  rekapPager.refresh();
 }
+
+// Paginasi tabel besar (Absensi harian, Rekap Absensi, Slip Gaji): 10 baris per halaman.
+// Baris di halaman lain hanya disembunyikan, jadi centang di tabel Gaji tetap tersimpan.
+function makeTablePager(tableSelector, key, pageSize = 10) {
+  let page = 0;
+  const el = (id) => document.getElementById(key + id);
+  function render() {
+    const rows = Array.from(document.querySelectorAll(`${tableSelector} tbody tr`));
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    if (page > totalPages - 1) page = totalPages - 1;
+    rows.forEach((tr, i) => { tr.style.display = Math.floor(i / pageSize) === page ? '' : 'none'; });
+    el('Pager').style.display = rows.length > pageSize ? 'flex' : 'none';
+    el('PageInfo').textContent = `Halaman ${page + 1} dari ${totalPages}`;
+    el('PrevBtn').disabled = page === 0;
+    el('NextBtn').disabled = page >= totalPages - 1;
+  }
+  el('PrevBtn').addEventListener('click', () => { if (page > 0) { page -= 1; render(); } });
+  el('NextBtn').addEventListener('click', () => { page += 1; render(); });
+  return { refresh(resetPage = true) { if (resetPage) page = 0; render(); } };
+}
+const dailyPager = makeTablePager('#dailyTable', 'daily');
+const rekapPager = makeTablePager('#monthTable', 'rekap');
+const gajiPager = makeTablePager('#gajiTable', 'gaji');
 
 // ---- Dashboard ----
 // 3 section "Terbaru" (Absensi/Kasbon/Cuti) dipaginasi 5 per halaman (sebelumnya nampilin
@@ -1406,6 +1484,26 @@ document.getElementById('kasbonSelectAll').addEventListener('change', (e) => {
   const bulanEl = document.getElementById('kasbonExportBulan');
   bulanEl.value = new Date().toISOString().slice(0, 7);
 })();
+function renderOwnerPwState(isSet) {
+  document.getElementById('ownerPwCurrentField').style.display = isSet ? '' : 'none';
+  document.getElementById('ownerPwHint').textContent = isSet
+    ? 'Password owner sudah dibuat. Untuk menggantinya, isi password lama dan password baru.'
+    : 'Belum ada password owner. Buat sekarang supaya hanya owner yang bisa membuka kunci periode gaji.';
+}
+document.getElementById('saveOwnerPwBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('ownerPwMsg');
+  const res = await fetch('/api/owner-password', {
+    method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword: document.getElementById('ownerPwCurrent').value, newPassword: document.getElementById('ownerPwNew').value }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { msg.style.color = '#c5221f'; msg.textContent = data.error || 'Gagal menyimpan.'; return; }
+  msg.style.color = '#137333'; msg.textContent = 'Password owner tersimpan.';
+  document.getElementById('ownerPwCurrent').value = '';
+  document.getElementById('ownerPwNew').value = '';
+  renderOwnerPwState(true);
+});
+
 document.getElementById('downloadBackupBtn').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/backup', { headers: authHeaders() });
@@ -1650,6 +1748,7 @@ async function loadConfig() {
   renderEmpList();
   renderLocList();
   renderExportEmpList();
+  renderOwnerPwState(!!cfg.ownerPasswordSet);
 
   document.getElementById('cfgUangMakan').value = cfg.uangMakanPerHari ?? 7000;
   document.getElementById('cfgUangTransport').value = cfg.uangTransportPerHari ?? 5000;
