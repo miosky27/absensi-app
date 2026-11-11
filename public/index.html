@@ -311,8 +311,6 @@
           <input type="text" id="kasbonCicilanPerBulan" inputmode="numeric" placeholder="Contoh: 100000" />
           <div class="hint" id="kasbonEstimasi" style="display:none;margin-top:6px"></div>
         </div>
-        <label class="lbl">Catatan (opsional)</label>
-        <textarea id="kasbonCatatan" placeholder="Keperluan kasbon..."></textarea>
         <button class="btn" id="submitKasbonBtn" style="margin-top:14px">Ajukan</button>
         <div class="status" id="kasbonStatus"></div>
       </div>
@@ -926,16 +924,15 @@ document.getElementById('submitKasbonBtn').addEventListener('click', async () =>
   const jenis = document.getElementById('kasbonJenis').value;
   const jumlah = Number(document.getElementById('kasbonJumlah').value.replace(/[^0-9]/g, ''));
   const cicilanPerBulan = Number(document.getElementById('kasbonCicilanPerBulan').value.replace(/[^0-9]/g, ''));
-  const catatan = document.getElementById('kasbonCatatan').value.trim();
   if (!jumlah || jumlah <= 0) return showStatus(st, 'Jumlah pinjaman harus lebih dari 0', 'err');
   if (jenis === 'cicil' && (!cicilanPerBulan || cicilanPerBulan <= 0)) return showStatus(st, 'Cicilan per bulan harus diisi untuk kasbon cicil', 'err');
   showStatus(st, 'Mengirim pengajuan...', 'warn');
   try {
-    const res = await fetch('/api/kasbon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: currentPhone, jenis, jumlah, cicilanPerBulan: jenis === 'cicil' ? cicilanPerBulan : null, catatan }) });
+    const res = await fetch('/api/kasbon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: currentPhone, jenis, jumlah, cicilanPerBulan: jenis === 'cicil' ? cicilanPerBulan : null }) });
     const data = await res.json();
     if (!res.ok) return showStatus(st, data.error || 'Gagal mengajukan', 'err');
     showStatus(st, 'Pengajuan kasbon berhasil dikirim, menunggu persetujuan admin.', 'ok');
-    ['kasbonJumlah', 'kasbonCicilanPerBulan', 'kasbonCatatan'].forEach((id) => { document.getElementById(id).value = ''; });
+    ['kasbonJumlah', 'kasbonCicilanPerBulan'].forEach((id) => { document.getElementById(id).value = ''; });
     document.getElementById('kasbonEstimasi').style.display = 'none';
     loadMyKasbon();
   } catch (e) {
