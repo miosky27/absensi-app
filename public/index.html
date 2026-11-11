@@ -752,6 +752,14 @@ function getLocation() {
   });
 }
 
+// Lapor ke server kalau GPS/kamera gagal, supaya admin bisa melihat percobaan yang gagal.
+function laporAbsenGagal(reason, detail) {
+  try {
+    fetch('/api/checkin-gagal', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: currentPhone, type: currentType, reason, detail: String(detail || '') }) }).catch(() => {});
+  } catch (e) { /* abaikan */ }
+}
+
 async function startAbsen(type) {
   currentType = type;
   currentShift = null;
@@ -769,6 +777,7 @@ async function startAbsen(type) {
     showShiftPicker(data.name, data.shifts);
     actionStatus.className = 'status';
   } catch (e) {
+    laporAbsenGagal('gps', e.message);
     showStatus(actionStatus, e.message, 'err');
   }
 }
@@ -811,12 +820,13 @@ photoInput.addEventListener('change', async () => {
   try {
     if (currentType === 'keluar' || currentType === 'lembur_masuk' || currentType === 'lembur_keluar') {
       showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
-      const coords = await getLocation();
+      const coords = await getLocation().catch((e) => { laporAbsenGagal('gps', e.message); throw e; });
       currentLat = coords.latitude;
       currentLng = coords.longitude;
     }
     showStatus(actionStatus, 'Mengirim data absen...', 'warn');
     const reader = new FileReader();
+    reader.onerror = () => { laporAbsenGagal('kamera', 'Foto tidak bisa dibaca'); showStatus(actionStatus, 'Foto tidak bisa dibaca, coba ambil ulang.', 'err'); };
     reader.onload = async () => {
       try {
         const res = await fetch('/api/checkin', {

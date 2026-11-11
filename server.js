@@ -24,7 +24,8 @@ const KASBON_PAYMENTS_FILE = path.join(DATA_DIR, 'kasbon_payments.json'); // cic
 const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json'); // pemberitahuan untuk karyawan (status cuti/kasbon dll)
 const ADMIN_NOTIFICATIONS_FILE = path.join(DATA_DIR, 'admin_notifications.json'); // pemberitahuan untuk admin (pengajuan cuti/kasbon baru)
 const PAYROLL_LOCKS_FILE = path.join(DATA_DIR, 'payroll_locks.json'); // periode gaji yang sudah dikunci + hasil hitungannya
-const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json'); // sesi login admin (hash token + masa berlaku)
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const FAILED_ATTEMPTS_FILE = path.join(DATA_DIR, 'failed_attempts.json'); // percobaan absen yang gagal (ditolak server atau GPS/kamera di HP) // sesi login admin (hash token + masa berlaku)
 
 const PORT = process.env.PORT || 3000;
 
@@ -41,6 +42,7 @@ ensureFile(KASBON_FILE, []);
 ensureFile(KASBON_PAYMENTS_FILE, []);
 ensureFile(NOTIFICATIONS_FILE, []);
 ensureFile(ADMIN_NOTIFICATIONS_FILE, []);
+ensureFile(FAILED_ATTEMPTS_FILE, []);
 ensureFile(PAYROLL_LOCKS_FILE, []);
 ensureFile(SESSIONS_FILE, []);
 ensureFile(CONFIG_FILE, {
@@ -1388,6 +1390,44 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---- Absen (check-in / check-out / lembur masuk / lembur pulang) ----
+// Percobaan absen yang gagal dicatat supaya admin bisa melihat siapa yang sering gagal absen.
+function logFailedAttempt({ phone, employee, type, reason, detail, lat, lng, distanceMeters, nearestLocation }) {
+  const serverTime = new Date().toISOString();
+  const list = readJSON(FAILED_ATTEMPTS_FILE);
+  list.push({
+    id: crypto.randomUUID(),
+    phone: phone ? String(phone) : null,
+    employee: employee || null,
+    type: type || null,
+    reason, // 'telepon_tidak_terdaftar' | 'nonaktif' | 'jarak_terlalu_jauh' | 'shift_kosong' | 'lokasi_belum_diatur' | 'data_tidak_lengkap' | 'shift_tidak_dikenali' | 'gps' | 'kamera'
+    detail: detail || '',
+    lat: typeof lat === 'number' ? lat : null,
+    lng: typeof lng === 'number' ? lng : null,
+    distanceMeters: typeof distanceMeters === 'number' ? Math.round(distanceMeters) : null,
+    nearestLocation: nearestLocation || null,
+    serverTime,
+    dateKey: dateKeyJakarta(serverTime),
+    timeHHMM: timeHHMMJakarta(serverTime),
+  });
+  // Simpan 2000 terakhir saja agar file tidak membengkak.
+  writeJSON(FAILED_ATTEMPTS_FILE, list.slice(-2000));
+}
+
+    // Laporan dari app karyawan saat GPS atau kamera gagal (request tidak sampai ke /api/checkin).
+    if (pathName === '/api/checkin-gagal' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const emp = config.employees.find((e) => e.phone === String(body.phone || '').trim());
+      const reason = body.reason === 'kamera' ? 'kamera' : 'gps';
+      logFailedAttempt({
+        phone: emp ? emp.phone : String(body.phone || '').trim() || null,
+        employee: emp ? emp.name : null,
+        type: typeof body.type === 'string' ? body.type : null,
+        reason,
+        detail: String(body.detail || '').slice(0, 300),
+      });
+      return sendJSON(res, 200, { ok: true });
+    }
+
     if (pathName === '/api/checkin' && req.method === 'POST') {
       const raw = await readBody(req);
       const body = JSON.parse(raw.toString('utf8'));
@@ -1395,17 +1435,21 @@ const server = http.createServer(async (req, res) => {
 
       const validTypes = ['masuk', 'keluar', 'lembur_masuk', 'lembur_keluar'];
       if (!phone || !validTypes.includes(type) || typeof lat !== 'number' || typeof lng !== 'number' || !photoBase64) {
+        logFailedAttempt({ phone, type, reason: 'data_tidak_lengkap', detail: 'Field wajib kosong atau tidak valid', lat, lng });
         return sendJSON(res, 400, { error: 'Data tidak lengkap (nomor telepon, tipe, lokasi, foto wajib diisi)' });
       }
       const emp = config.employees.find((e) => e.phone === String(phone).trim());
       if (!emp) {
+        logFailedAttempt({ phone, type, reason: 'telepon_tidak_terdaftar', detail: 'Nomor tidak ada di daftar karyawan', lat, lng });
         return sendJSON(res, 400, { error: 'Nomor telepon tidak terdaftar. Hubungi admin untuk didaftarkan.' });
       }
       if (emp.status === 'nonaktif') {
+        logFailedAttempt({ phone: emp.phone, employee: emp.name, type, reason: 'nonaktif', detail: 'Akun karyawan non-aktif', lat, lng });
         return sendJSON(res, 403, { error: 'Akun karyawan ini sudah tidak aktif. Hubungi admin.' });
       }
 
       if (config.locations.length === 0) {
+        logFailedAttempt({ phone: emp.phone, employee: emp.name, type, reason: 'lokasi_belum_diatur', detail: 'Belum ada lokasi kantor', lat, lng });
         return sendJSON(res, 400, { error: 'Belum ada lokasi kantor yang diatur. Hubungi admin.' });
       }
       const nearest = nearestLocation(lat, lng, config.locations);
@@ -1414,6 +1458,7 @@ const server = http.createServer(async (req, res) => {
       // Task #38: batas jarak maksimal (hard limit) — kalau lebih jauh dari ini, absen DITOLAK
       // sepenuhnya (bukan cuma ditandai "di luar radius" seperti sebelumnya).
       if (nearest.melebihiJarakMaksimal) {
+        logFailedAttempt({ phone: emp.phone, employee: emp.name, type, reason: 'jarak_terlalu_jauh', detail: `Jarak ${Math.round(nearest.distanceMeters)} m, maksimal ${nearest.maxDistanceMeters} m`, lat, lng, distanceMeters: nearest.distanceMeters, nearestLocation: nearest.name });
         return sendJSON(res, 400, {
           error: `Lokasi kamu terlalu jauh dari ${nearest.name} (jarak ${Math.round(nearest.distanceMeters)} m, maksimal ${nearest.maxDistanceMeters} m). Absen tidak bisa disimpan, pastikan kamu berada dekat lokasi kerja.`,
         });
@@ -1423,9 +1468,15 @@ const server = http.createServer(async (req, res) => {
       // Lembur Masuk/Lembur Pulang tidak terikat jadwal shift ataupun batasan waktu.
       let shiftInfo = null;
       if (type === 'masuk') {
-        if (!shift) return sendJSON(res, 400, { error: 'Pilih shift terlebih dahulu.' });
+        if (!shift) {
+          logFailedAttempt({ phone: emp.phone, employee: emp.name, type, reason: 'shift_kosong', detail: 'Shift belum dipilih', lat, lng, nearestLocation: nearest.name });
+          return sendJSON(res, 400, { error: 'Pilih shift terlebih dahulu.' });
+        }
         shiftInfo = (nearest.shifts || []).find((s) => s.name === shift) || null;
-        if (!shiftInfo) return sendJSON(res, 400, { error: 'Shift tidak dikenali untuk lokasi ini.' });
+        if (!shiftInfo) {
+          logFailedAttempt({ phone: emp.phone, employee: emp.name, type, reason: 'shift_tidak_dikenali', detail: `Shift "${shift}" tidak ada di lokasi ini`, lat, lng, nearestLocation: nearest.name });
+          return sendJSON(res, 400, { error: 'Shift tidak dikenali untuk lokasi ini.' });
+        }
       }
 
       const id = crypto.randomUUID();
@@ -2594,8 +2645,23 @@ const server = http.createServer(async (req, res) => {
       });
       const terlambatHariIni = Object.values(masukHariIni).filter((r) => isLateMasuk(r, config)).length;
       const totalKaryawan = config.employees.filter((e) => e.status !== 'nonaktif').length;
+      const reasonLabel = {
+        telepon_tidak_terdaftar: 'Nomor tidak terdaftar', nonaktif: 'Akun non-aktif', jarak_terlalu_jauh: 'Terlalu jauh dari lokasi',
+        shift_kosong: 'Shift belum dipilih', shift_tidak_dikenali: 'Shift tidak dikenali', lokasi_belum_diatur: 'Lokasi kantor belum diatur',
+        data_tidak_lengkap: 'Data tidak lengkap', gps: 'GPS gagal', kamera: 'Kamera gagal',
+      };
+      const absenGagalHariIni = readJSON(FAILED_ATTEMPTS_FILE)
+        .filter((f) => f.dateKey === todayKey)
+        .sort((a, b) => (a.timeHHMM < b.timeHHMM ? 1 : -1))
+        .slice(0, 50)
+        .map((f) => ({
+          id: f.id, employee: f.employee || f.phone || '-', type: f.type, timeHHMM: f.timeHHMM,
+          reason: f.reason, reasonLabel: reasonLabel[f.reason] || f.reason, detail: f.detail,
+          distanceMeters: f.distanceMeters, nearestLocation: f.nearestLocation,
+        }));
       return sendJSON(res, 200, {
         date: todayKey,
+        absenGagalHariIni,
         totalKaryawan,
         karyawanMasuk,
         belumAbsen: Math.max(0, totalKaryawan - karyawanMasuk),

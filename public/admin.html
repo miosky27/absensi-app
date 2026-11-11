@@ -465,6 +465,11 @@
                 <button class="btn secondary icon-pager-btn" type="button" id="dashLeaveNextBtn" title="Selanjutnya" aria-label="Selanjutnya"><svg class="ic"><use href="#i-chev-right"/></svg></button>
               </div>
             </div>
+            <div class="card">
+              <div class="card-head" style="margin-bottom:4px"><h3 class="card-title">Percobaan Absen Gagal</h3><span class="page-sub" style="margin:0">Hari ini</span></div>
+              <div id="dashAbsenGagalList"></div>
+              <div class="empty" id="dashAbsenGagalEmpty"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1693,6 +1698,17 @@ function renderPendingBadges() {
   document.getElementById('leaveSubtitle').textContent = `${pendingCounts.leave} pengajuan menunggu persetujuan`;
 }
 
+// Percobaan absen gagal hari ini (ditolak server atau GPS/kamera di HP karyawan).
+function renderAbsenGagal(list) {
+  const box = document.getElementById('dashAbsenGagalList');
+  const empty = document.getElementById('dashAbsenGagalEmpty');
+  if (!list.length) { box.innerHTML = ''; empty.textContent = 'Belum ada percobaan absen yang gagal hari ini.'; return; }
+  empty.textContent = '';
+  box.innerHTML = list.slice(0, 10).map((f) => `
+    <div class="rcard"><div class="rcard-top">${personCell(f.employee, `${f.timeHHMM} · ${f.detail || ''}`)}<span class="badge pending">${esc(f.reasonLabel)}</span></div></div>
+  `).join('') + (list.length > 10 ? `<div class="page-sub" style="margin-top:8px">+${list.length - 10} percobaan lain</div>` : '');
+}
+
 async function loadDashboard() {
   const res = await fetch('/api/dashboard-summary', { headers: authHeaders() });
   if (!res.ok) return;
@@ -1707,6 +1723,7 @@ async function loadDashboard() {
     <div class="kpi"><div class="lbl"><span class="desk-only">Kasbon menunggu</span><span class="mob-only">Kasbon</span></div><div class="num">${pendingCounts.kasbon}</div><div class="sub"><button class="link" type="button" data-goto="kasbon">Tinjau pengajuan</button></div></div>
   `;
   dashRecentPaginator.setItems(d.recentRecords);
+  renderAbsenGagal(d.absenGagalHariIni || []);
   dashKasbonPaginator.setItems(d.kasbonTerbaru);
   dashLeavePaginator.setItems(d.leaveTerbaru);
 
