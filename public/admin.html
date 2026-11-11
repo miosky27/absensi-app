@@ -1176,6 +1176,16 @@ async function loadDaily() {
   const tbody = document.querySelector('#dailyTable tbody');
   tbody.innerHTML = '';
   // Jam absen yang punya foto bisa diklik untuk melihat foto record itu sendiri.
+  // Tombol edit jam (pensil hijau) untuk jam yang sudah ada, "+ Isi" untuk yang kosong.
+  const editBtn = (emp, g, type) => {
+    if (!emp.phone) return '';
+    const r = g[type];
+    if (!r && type !== 'masuk' && !g.masuk) return '';
+    const attrs = `data-manualedit="${type}" data-phone="${esc(emp.phone)}" data-name="${esc(emp.name || '')}" data-recid="${r ? esc(r.id) : ''}" data-current="${r ? esc(r.timeHHMM) : ''}" data-loc="${r ? esc(r.nearestLocation || '') : ''}" data-shift="${r ? esc(r.shift || '') : ''}"`;
+    return r
+      ? ` <button class="icon-btn icon-btn-edit" type="button" title="Edit jam" ${attrs} style="padding:4px;vertical-align:middle"><svg class="ic" style="width:15px;height:15px"><use href="#i-edit"/></svg></button>`
+      : ` <button class="link" type="button" ${attrs} style="margin-left:6px">+ Isi</button>`;
+  };
   const jamText = (rec) => {
     if (!rec) return '<span class="muted">Belum ada</span>';
     if (!rec.photoFilename) return esc(rec.timeHHMM);
@@ -1190,7 +1200,7 @@ async function loadDaily() {
     const isiBtn = emp.phone
       ? `<button class="btn secondary small" type="button" data-isimasuk="${esc(emp.phone)}" data-name="${esc(name)}"><svg class="ic" style="width:14px;height:14px"><use href="#i-plus"/></svg>Isi Jam Masuk</button>`
       : '<span class="muted">Belum ada</span>';
-    const masukCell = g.masuk ? `<span class="strong">${jamText(g.masuk)}</span>${late ? ' <span class="badge late">Terlambat</span>' : ''}` : isiBtn;
+    const masukCell = g.masuk ? `<span class="strong">${jamText(g.masuk)}</span>${late ? ' <span class="badge late">Terlambat</span>' : ''}${editBtn(emp, g, 'masuk')}` : isiBtn;
     let mStatus = '';
     if (g.masuk) mStatus = late ? '<span class="badge late">Terlambat</span>' : (g.lembur_masuk ? '<span class="badge lembur">Lembur</span>' : '<span class="badge hadir">Hadir</span>');
     const mRight = g.masuk
@@ -1201,16 +1211,43 @@ async function loadDaily() {
       <td>${personCell(name, emp.position || '')}</td>
       <td class="muted">${esc(emp.idNumber || '—')}</td>
       <td>${masukCell}</td>
-      <td>${jamText(g.keluar)}</td>
-      <td>${jamText(g.lembur_masuk)}</td>
-      <td>${jamText(g.lembur_keluar)}</td>
-      <td class="m-card"><div class="rcard"><div class="rcard-top">${personCell(name, emp.position || '')}<div class="rcard-right">${mRight}</div></div></div></td>
+      <td style="white-space:nowrap">${jamText(g.keluar)}${editBtn(emp, g, 'keluar')}</td>
+      <td style="white-space:nowrap">${jamText(g.lembur_masuk)}${editBtn(emp, g, 'lembur_masuk')}</td>
+      <td style="white-space:nowrap">${jamText(g.lembur_keluar)}${editBtn(emp, g, 'lembur_keluar')}</td>
+      <td class="m-card"><div class="rcard"><div class="rcard-top">${personCell(name, emp.position || '')}<div class="rcard-right">${mRight}</div></div>
+        ${g.masuk && emp.phone ? `<div class="rcard-line" style="display:flex;gap:16px;flex-wrap:wrap">
+          <button class="link" type="button" data-manualedit="masuk" data-phone="${esc(emp.phone)}" data-name="${esc(name)}" data-recid="${esc(g.masuk.id)}" data-current="${esc(g.masuk.timeHHMM)}" data-loc="${esc(g.masuk.nearestLocation || '')}" data-shift="${esc(g.masuk.shift || '')}">Edit masuk</button>
+          <button class="link" type="button" data-manualedit="keluar" data-phone="${esc(emp.phone)}" data-recid="${g.keluar ? esc(g.keluar.id) : ''}" data-current="${g.keluar ? esc(g.keluar.timeHHMM) : ''}">${g.keluar ? 'Edit pulang' : '+ Isi pulang'}</button>
+        </div>` : ''}</div></td>
     `;
     tbody.appendChild(tr);
   }
 
   document.getElementById('dailyEmpty').textContent = allNames.length === 0 ? 'Belum ada data karyawan.' : '';
   dailyPager.refresh();
+  const tipeLabel = { keluar: 'Pulang', lembur_masuk: 'Lembur Masuk', lembur_keluar: 'Lembur Pulang' };
+  tbody.querySelectorAll('[data-manualedit]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const type = btn.dataset.manualedit;
+      const phone = btn.dataset.phone;
+      const recId = btn.dataset.recid;
+      const current = btn.dataset.current;
+      // Jam Masuk butuh Lokasi + Shift (dipakai untuk hitung lembur/terlambat), jadi pakai modal.
+      if (type === 'masuk') {
+        openAbsenMasukModal({ phone, recId, current, loc: btn.dataset.loc, shift: btn.dataset.shift, dateKey: date, name: btn.dataset.name });
+        return;
+      }
+      const input = prompt(`Jam ${tipeLabel[type] || type} (format HH:MM):`, current || '16:00');
+      if (input === null) return;
+      const timeHHMM = input.trim();
+      if (!/^\d{2}:\d{2}$/.test(timeHHMM)) { alert('Format jam tidak valid. Gunakan HH:MM, contoh 16:30.'); return; }
+      const res = recId
+        ? await fetch(`/api/records/${recId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ timeHHMM }) })
+        : await fetch('/api/records/manual', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ phone, type, dateKey: date, timeHHMM }) });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menyimpan jam absen.'); return; }
+      loadDaily();
+    });
+  });
   tbody.querySelectorAll('[data-isimasuk]').forEach((btn) => {
     btn.addEventListener('click', () => openAbsenMasukModal({ phone: btn.dataset.isimasuk, name: btn.dataset.name, dateKey: date }));
   });
