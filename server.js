@@ -297,6 +297,14 @@ function computePayrollDailyByEmployeeDate(records, toleransiMenit, config) {
   return result;
 }
 
+// Absen masuk dianggap terlambat kalau lewat dari jam mulai shift + toleransi.
+function isLateMasuk(r, config) {
+  const start = timeToMinutes(r.shiftStart || config.workStartTime || '08:00');
+  const t = timeToMinutes(r.timeHHMM);
+  if (start === null || t === null) return false;
+  return t > start + (config.toleransiTerlambatMenit ?? 15);
+}
+
 // Tebak shift untuk hari yang cuma punya absen pulang (lupa absen masuk): ambil shift di lokasi
 // absen pulang yang jam pulangnya paling dekat dengan jam absen pulang karyawan.
 function inferShiftFromKeluar(locName, keluarMenit, config) {
@@ -1211,7 +1219,20 @@ const server = http.createServer(async (req, res) => {
           keluar: todayKeluar ? todayKeluar.timeHHMM : null,
           lemburMasuk: todayLemburMasuk ? todayLemburMasuk.timeHHMM : null,
           lemburKeluar: todayLemburKeluar ? todayLemburKeluar.timeHHMM : null,
+          shift: todayMasuk ? (todayMasuk.shift || null) : null,
+          shiftStart: todayMasuk ? (todayMasuk.shiftStart || null) : null,
+          shiftEnd: todayMasuk ? (todayMasuk.shiftEnd || null) : null,
+          location: todayMasuk ? (todayMasuk.nearestLocation || null) : null,
         },
+        // Hari izin/cuti/sakit yang disetujui di bulan ini (ditampilkan di Riwayat sebagai "Tidak masuk").
+        leaveDays: myLeaves.flatMap((l) => {
+          if (l.endDate < monthStart || l.startDate > monthEnd) return [];
+          const out = [];
+          let cur = l.startDate < monthStart ? monthStart : l.startDate;
+          const end = l.endDate > monthEnd ? monthEnd : l.endDate;
+          while (cur <= end) { out.push({ dateKey: cur, type: l.type }); cur = shiftDateKey(cur, 1); }
+          return out;
+        }),
       });
     }
 
@@ -2469,21 +2490,33 @@ const server = http.createServer(async (req, res) => {
         .slice(0, 50)
         .map((r) => ({
           employee: r.employee, position: positionByName[r.employee] || '', type: r.type,
-          timeHHMM: r.timeHHMM, nearestLocation: r.nearestLocation,
+          timeHHMM: r.timeHHMM, nearestLocation: r.nearestLocation, dateKey: r.dateKey,
+          late: r.type === 'masuk' && isLateMasuk(r, config),
         }));
       const kasbonTerbaru = readJSON(KASBON_FILE)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
         .slice(0, 50)
-        .map((k) => ({ employee: k.employee, jenis: k.jenis, jumlah: k.jumlah, status: k.status }));
+        .map((k) => ({ id: k.id, employee: k.employee, jenis: k.jenis, jumlah: k.jumlah, status: k.status }));
       const leaveTerbaru = readJSON(LEAVES_FILE)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
         .slice(0, 50)
-        .map((l) => ({ employee: l.employee, type: l.type, startDate: l.startDate, endDate: l.endDate, status: l.status }));
+        .map((l) => ({ id: l.id, employee: l.employee, type: l.type, startDate: l.startDate, endDate: l.endDate, status: l.status, reason: l.reason || '' }));
 
+      const masukHariIni = {};
+      recordsToday.filter((r) => r.type === 'masuk').forEach((r) => {
+        if (!masukHariIni[r.employee] || r.timeHHMM < masukHariIni[r.employee].timeHHMM) masukHariIni[r.employee] = r;
+      });
+      const terlambatHariIni = Object.values(masukHariIni).filter((r) => isLateMasuk(r, config)).length;
+      const totalKaryawan = config.employees.filter((e) => e.status !== 'nonaktif').length;
       return sendJSON(res, 200, {
         date: todayKey,
-        totalKaryawan: config.employees.filter((e) => e.status !== 'nonaktif').length,
+        totalKaryawan,
         karyawanMasuk,
+        belumAbsen: Math.max(0, totalKaryawan - karyawanMasuk),
+        terlambatHariIni,
+        toleransiTerlambatMenit: config.toleransiTerlambatMenit ?? 15,
+        leavePending: readJSON(LEAVES_FILE).filter((l) => l.status === 'pending').length,
+        kasbonPending: readJSON(KASBON_FILE).filter((k) => k.status === 'pending').length,
         karyawanCuti: leavesToday.length,
         recentRecords,
         kasbonTerbaru,

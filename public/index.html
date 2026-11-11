@@ -2,394 +2,348 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#4b1843" />
 <title>Absensi Erly's Cake & Bakery</title>
 <link rel="manifest" href="/manifest.json" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    background: #faf5ec; color: #2a1a26; min-height: 100vh;
+  :root {
+    --plum-900:#4b1843; --plum-800:#5c1d53; --plum:#702464; --plum-50:#f6ecf3; --plum-100:#efdeea;
+    --bg:#f7f1e8; --line:#efe6dc; --line-2:#e6dbcf; --text:#2a1a26; --muted:#8a7b85;
+    --gold:#f2b84b; --gold-soft:#fdf1d6; --green:#1e7a3f; --green-soft:#e4f3e8;
+    --orange:#b35a0f; --orange-soft:#fde9d4; --blue:#1a56b0; --blue-soft:#e3edfb; --red:#c0392b; --red-soft:#fbe5e2;
   }
-  .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 90px; }
-  h1 { font-size: 18px; margin: 0 0 2px; color:#4a1843; }
-  .sub { color: #666; font-size: 14px; margin-bottom: 20px; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; }
+  body { font-family:"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); font-size:14px; -webkit-font-smoothing:antialiased; }
+  svg.ic { width:20px; height:20px; flex-shrink:0; }
+  .app { max-width:480px; margin:0 auto; min-height:100vh; position:relative; }
 
-  /* ---- Layar Masuk (login) ---- */
-  .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .login-card { background:#fff; border-radius:20px; padding:32px 28px; box-shadow:0 4px 20px rgba(74,24,67,0.12); width:100%; max-width:360px; text-align:center; position:relative; }
-  .admin-entry-link { display:block; margin-top:14px; font-size:13px; color:#702464; font-weight:600; text-decoration:none; }
-  .login-logo-circle { width:auto; height:90px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; }
-  .login-logo-circle img { max-width:220px; max-height:90px; width:auto; height:auto; object-fit:contain; }
-  .login-card h1 { font-size:20px; margin:0 0 4px; color:#4a1843; }
-  .login-card .sub { font-size:13px; color:#8a7b85; margin-bottom:20px; }
-  .login-card label { text-align:left; }
-  .card { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; }
-  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #333; }
-  input[type=text], input[type=tel] {
-    width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; margin-bottom: 14px;
-  }
-  .btn {
-    width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600;
-    cursor: pointer; margin-bottom: 10px;
-  }
-  .btn-primary { background: #702464; color: #fff; }
-  .btn-secondary { background: #e8eaed; color: #1a1a1a; }
-  .btn:disabled { opacity: 0.5; }
-  .preview { width: 100%; border-radius: 10px; margin-bottom: 14px; display: none; }
-  .status { padding: 12px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 14px; display: none; }
-  .status.ok { background: #e6f4ea; color: #137333; display: block; }
-  .status.warn { background: #fef7e0; color: #b06000; display: block; }
-  .status.err { background: #fce8e6; color: #c5221f; display: block; }
-  .muted { color: #888; font-size: 12px; }
-  .name-tag { font-weight: 700; color: #702464; }
-  .shift-option {
-    width: 100%; text-align: left; padding: 14px; border: 1.5px solid #ddd; border-radius: 10px;
-    background: #fff; margin-bottom: 10px; cursor: pointer; font-size: 15px;
-  }
-  .shift-option:active { background: #f1e3ee; border-color: #702464; }
-  .shift-option .shift-time { display:block; font-size: 13px; color: #666; margin-top: 2px; }
+  input, select, textarea { width:100%; font-family:inherit; font-size:15px; color:var(--text); background:#fff; border:1px solid var(--line-2); border-radius:12px; padding:12px 14px; outline:none; }
+  textarea { min-height:96px; resize:vertical; }
+  input:focus, select:focus, textarea:focus { border-color:#8a3a7d; box-shadow:0 0 0 3px rgba(112,36,100,.12); }
+  label.lbl { display:block; font-size:12px; font-weight:600; color:#4a3a45; margin:14px 0 6px; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; height:50px; border:1px solid transparent; border-radius:14px; background:var(--plum); color:#fff; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer; }
+  .btn:disabled { opacity:.5; }
+  .btn.secondary { background:#fff; color:var(--text); border-color:var(--line-2); }
+  .btn.ghost-danger { background:#fff; color:var(--red); border-color:var(--line-2); }
+  .card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:16px; }
+  .section-label { font-weight:700; font-size:15px; margin:22px 0 10px; }
+  .hint { font-size:12px; color:var(--muted); }
+  .status { display:none; margin-top:12px; padding:10px 12px; border-radius:12px; font-size:13px; line-height:1.45; }
+  .status.ok { display:block; background:var(--green-soft); color:var(--green); }
+  .status.warn { display:block; background:var(--gold-soft); color:#8a5a10; }
+  .status.err { display:block; background:var(--red-soft); color:var(--red); }
+  .badge { display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
+  .badge.hadir, .badge.approved, .badge.lunas { background:var(--green-soft); color:var(--green); }
+  .badge.terlambat { background:var(--orange-soft); color:var(--orange); }
+  .badge.lembur { background:var(--plum-50); color:var(--plum); }
+  .badge.izin, .badge.berjalan { background:var(--blue-soft); color:var(--blue); }
+  .badge.pending { background:var(--gold-soft); color:#8a5a10; }
+  .badge.rejected, .badge.ditolak { background:var(--red-soft); color:var(--red); }
+  .badge.muted { background:#f1ece6; color:#7a6d75; }
+  .avatar { width:40px; height:40px; border-radius:12px; background:var(--gold); color:#4b2a00; display:inline-flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; flex-shrink:0; overflow:hidden; }
+  .avatar img { width:100%; height:100%; object-fit:cover; }
 
-  /* ---- Status badge waktu absen ---- */
-  .stat-badge { padding:2px 8px; border-radius:8px; font-size:10px; font-weight:700; white-space:nowrap; }
-  .stat-badge.ontime { background:#e3eefc; color:#1a56b0; }
-  .stat-badge.late { background:#f1e3ee; color:#702464; }
-  .stat-badge.early { background:#eceff1; color:#555; }
-  .stat-badge.overtime { background:#e6f4ea; color:#137333; }
-  .stat-badge.absent { background:#fce4ec; color:#c2185b; }
+  /* ---- Login ---- */
+  .login { min-height:100vh; display:flex; flex-direction:column; padding:40px 22px 28px; }
+  .login .logo { width:170px; margin:12vh auto 26px; display:block; }
+  .login h1 { text-align:center; font-size:26px; margin:0 0 6px; font-weight:800; }
+  .login .sub { text-align:center; color:var(--muted); font-size:13px; margin-bottom:24px; }
+  .login .admin-link { margin-top:auto; text-align:center; font-size:13px; color:var(--plum); font-weight:600; text-decoration:underline; text-underline-offset:3px; padding-top:28px; }
 
-  /* ---- Bottom navigation ---- */
-  .bottom-nav {
-    position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid #eee;
-    display:flex; max-width:480px; margin:0 auto; box-shadow:0 -2px 10px rgba(0,0,0,0.05); z-index:50;
-  }
-  .nav-item {
-    flex:1; text-align:center; padding:9px 0 10px; font-size:10.5px; color:#999; cursor:pointer;
-    border:none; background:none; font-family:inherit; -webkit-tap-highlight-color:transparent; position:relative;
-  }
-  .nav-item.active { color:#702464; font-weight:700; }
-  .nav-icon { font-size:20px; display:block; margin-bottom:2px; line-height:1; }
-  .nav-dot {
-    position:absolute; top:4px; right:calc(50% - 18px); width:8px; height:8px; border-radius:50%;
-    background:#c5221f; display:none;
-  }
-  .nav-dot.show { display:block; }
-
-  .page { display:none; }
+  /* ---- Halaman ---- */
+  .page { display:none; padding:20px 16px 110px; }
   .page.active { display:block; }
+  .page-head { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .page-head h2 { margin:0; font-size:24px; font-weight:800; letter-spacing:-.3px; }
+  .page-head .sub { font-size:12px; color:var(--muted); margin-top:2px; }
+  .back-btn { width:40px; height:40px; border-radius:12px; border:1px solid var(--line-2); background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text); flex-shrink:0; }
 
-  /* ---- Kartu Profil (gradient violet) ---- */
-  .profile-grad-card {
-    background:linear-gradient(135deg,#8a3380,#5c1d52); border-radius:18px; padding:40px 16px 18px;
-    position:relative; margin-bottom:16px; text-align:center;
-  }
-  .profile-avatar-float {
-    position:absolute; top:-28px; left:50%; transform:translateX(-50%);
-    width:60px; height:60px; border-radius:50%; object-fit:cover; background:#e8eaed;
-    border:3px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,0.15);
-  }
-  .profile-grad-card .pg-name { color:#fff; font-weight:800; font-size:16px; }
-  .profile-grad-card .pg-meta { color:#e9d3e4; font-size:12px; margin-top:3px; }
+  /* ---- Dashboard ---- */
+  .dash-top { background:var(--plum-900); color:#fff; margin:-20px -16px 0; padding:18px 16px 70px; border-radius:0 0 26px 26px; display:flex; align-items:center; gap:12px; }
+  .dash-top .hi { font-weight:700; font-size:16px; }
+  .dash-top .date { font-size:12px; color:#e5d3e1; margin-top:2px; }
+  .bell { margin-left:auto; width:42px; height:42px; border-radius:13px; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center; position:relative; cursor:pointer; color:#fff; }
+  .bell .dot { position:absolute; top:-6px; right:-6px; min-width:20px; height:20px; border-radius:999px; background:var(--gold); color:#4b2a00; font-size:11px; font-weight:800; display:none; align-items:center; justify-content:center; padding:0 5px; border:2px solid var(--plum-900); }
+  .presensi { margin-top:-56px; position:relative; box-shadow:0 10px 30px rgba(61,18,55,.12); }
+  .presensi .lbl-top { font-size:12px; color:var(--muted); }
+  .presensi .title-row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:2px; }
+  .presensi .title { font-size:17px; font-weight:800; }
+  .loc-box { display:flex; gap:10px; align-items:center; margin:14px 0; padding:12px; border-radius:12px; background:#f6f1eb; color:#6d5d68; font-size:12px; }
+  .loc-box.ok { background:var(--green-soft); color:var(--green); }
+  .loc-box.bad { background:var(--red-soft); color:var(--red); }
+  .loc-box b { display:block; font-size:13px; color:inherit; }
+  .big-btn { height:58px; font-size:17px; letter-spacing:1px; font-weight:800; border-radius:16px; }
+  .big-btn.done { background:var(--green-soft); color:var(--green); opacity:1; }
+  .ring-sub { text-align:center; font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5; }
+  .extra-btn { margin-top:10px; height:44px; font-size:14px; }
+  .preview { display:none; width:72px; height:72px; object-fit:cover; border-radius:12px; margin:12px auto 0; }
+  .stat-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+  .stat { background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 10px; }
+  .stat .n { font-size:22px; font-weight:800; }
+  .stat .n small { font-size:12px; font-weight:600; color:var(--muted); }
+  .stat .l { font-size:11px; color:var(--muted); margin-top:2px; line-height:1.3; }
+  .quick { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  .quick button { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px 8px; font-family:inherit; font-size:13px; font-weight:600; color:var(--text); display:flex; flex-direction:column; align-items:center; gap:10px; cursor:pointer; }
+  .quick .qi { width:38px; height:38px; border-radius:12px; background:var(--plum-50); color:var(--plum); display:flex; align-items:center; justify-content:center; }
 
-  /* ---- Kartu Presensi ---- */
-  .presensi-card { text-align:center; }
-  .presensi-date { font-size:13px; color:#666; margin-bottom:4px; }
-  .presensi-status { font-size:15px; font-weight:700; color:#4a1843; margin-bottom:6px; }
-  .presensi-distance { font-size:12px; margin-bottom:18px; }
-  .presensi-distance.ok { color:#137333; }
-  .presensi-distance.bad { color:#c5221f; }
-  .presensi-distance.neutral { color:#999; }
+  /* ---- Daftar / kartu ---- */
+  .list-card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:14px; margin-bottom:10px; }
+  .list-card .top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .list-card .t { font-weight:700; }
+  .list-card .s { font-size:12px; color:var(--muted); margin-top:3px; }
+  .progress { height:6px; border-radius:99px; background:#f0e8df; overflow:hidden; margin-top:10px; }
+  .progress > span { display:block; height:100%; background:var(--plum); border-radius:99px; }
+  .month-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .month-nav .label { font-weight:700; }
+  .nav-arrow { width:40px; height:40px; border-radius:12px; border:1px solid var(--line-2); background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text); }
+  .empty { font-size:13px; color:var(--muted); padding:6px 2px; }
 
-  .ring-btn {
-    width:148px; height:148px; border-radius:50%; margin:0 auto 10px; border:none; cursor:pointer;
-    background:linear-gradient(135deg,#9a3f8f,#5c1d52); color:#fff; font-weight:800; font-size:17px;
-    display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.3;
-    box-shadow:0 6px 18px rgba(90,20,80,0.35); font-family:inherit; padding:10px;
-  }
-  .ring-btn:active { transform:scale(0.97); }
-  .ring-btn:disabled { opacity:0.55; cursor:default; transform:none; }
-  .ring-btn.done { background:linear-gradient(135deg,#2e9e5b,#146b38); }
-  .ring-sub-time { font-size:12px; color:#888; margin-bottom:10px; }
-  .ring-extra-btn {
-    display:inline-block; margin-top:4px; padding:9px 18px; border-radius:20px; border:1.5px solid #e9ddf0;
-    background:#fff; color:#702464; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;
-  }
-  .ring-skip-link { display:block; margin-top:8px; font-size:12px; color:#999; text-decoration:underline; cursor:pointer; background:none; border:none; font-family:inherit; }
+  .seg3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .seg3 button { height:44px; border-radius:12px; border:1px solid var(--line-2); background:#fff; font-family:inherit; font-weight:600; font-size:13px; color:var(--text); cursor:pointer; }
+  .seg3 button.active { background:var(--plum); border-color:var(--plum); color:#fff; }
+  .radio-card { display:flex; gap:12px; align-items:center; border:1px solid var(--line-2); border-radius:14px; padding:12px 14px; margin-bottom:10px; cursor:pointer; background:#fff; }
+  .radio-card.active { border-color:var(--plum); background:var(--plum-50); }
+  .radio-card .dotc { width:20px; height:20px; border-radius:50%; border:2px solid #c9b9c4; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .radio-card.active .dotc { border-color:var(--plum); }
+  .radio-card.active .dotc::after { content:''; width:10px; height:10px; border-radius:50%; background:var(--plum); }
+  .radio-card .t { font-weight:700; font-size:14px; }
+  .radio-card .s { font-size:12px; color:var(--muted); }
 
-  /* ---- Ringkasan bulan ini: grid 2x2 ---- */
-  .section-label { font-size:13px; font-weight:700; color:#4a1843; margin:4px 0 10px; }
-  .stat-grid-2x2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
-  .stat-tile { border-radius:14px; padding:14px; }
-  .stat-tile .st-num { font-size:22px; font-weight:800; }
-  .stat-tile .st-lbl { font-size:12px; margin-top:2px; }
-  .stat-tile.kehadiran { background:#e3eefc; } .stat-tile.kehadiran .st-num { color:#1a56b0; } .stat-tile.kehadiran .st-lbl { color:#1a56b0; }
-  .stat-tile.tidakhadir { background:#fce8e6; } .stat-tile.tidakhadir .st-num { color:#c5221f; } .stat-tile.tidakhadir .st-lbl { color:#c5221f; }
-  .stat-tile.ijin { background:#fef7e0; } .stat-tile.ijin .st-num { color:#b06000; } .stat-tile.ijin .st-lbl { color:#b06000; }
-  .stat-tile.lembur { background:#e6f4ea; } .stat-tile.lembur .st-num { color:#137333; } .stat-tile.lembur .st-lbl { color:#137333; }
-
-  /* ---- Akses Cepat ---- */
-  .akses-cepat-row { display:flex; gap:10px; margin-bottom:6px; }
-  .akses-card {
-    flex:1; border:1.5px solid #e9ddf0; border-radius:14px; padding:16px 10px; text-align:center;
-    background:#fff; cursor:pointer; font-family:inherit;
-  }
-  .akses-card:active { background:#f8f1f6; }
-  .akses-card .ac-icon { font-size:24px; margin-bottom:6px; }
-  .akses-card .ac-label { font-size:13px; font-weight:700; color:#4a1843; }
-
-  .day-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
-  .day-card .dc-date { font-weight:700; font-size:13px; margin-bottom:8px; }
-  .day-card .dc-row { display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:4px 0; }
-  .day-card .dc-row .dc-lbl { color:#666; }
-  .day-card .dc-row .dc-time { font-weight:700; }
-  .day-card .dc-meta { font-size:11px; color:#888; margin-top:6px; }
+  /* ---- Slip ---- */
+  .slip-hero { background:var(--plum-900); color:#fff; border-radius:18px; padding:18px; margin-bottom:14px; }
+  .slip-hero .l { font-size:12px; color:#e5d3e1; }
+  .slip-hero .v { font-size:30px; font-weight:800; margin:4px 0; letter-spacing:-.5px; }
+  .slip-sec { background:#fff; border:1px solid var(--line); border-radius:16px; padding:6px 16px 10px; margin-bottom:12px; }
+  .slip-sec .h { font-weight:700; color:var(--plum); font-size:13px; padding:10px 0 4px; }
+  .slip-line { display:flex; justify-content:space-between; gap:12px; padding:7px 0; font-size:13px; }
+  .slip-line span:first-child { color:#5d4e58; }
+  .slip-line.total { border-top:1px solid var(--line); margin-top:4px; padding-top:10px; font-weight:800; }
+  .slip-line.total span:first-child { color:var(--text); }
 
   /* ---- Notifikasi ---- */
-  .notif-card { border:1px solid #eee; border-radius:12px; padding:14px; margin-bottom:10px; display:flex; gap:10px; align-items:flex-start; }
-  .notif-card.unread { background:#f8f1f6; border-color:#e9ddf0; }
-  .notif-dot-icon { width:8px; height:8px; border-radius:50%; background:#702464; margin-top:6px; flex-shrink:0; }
-  .notif-dot-icon.read { background:transparent; }
-  .notif-msg { font-size:13.5px; color:#2a1a26; line-height:1.4; }
-  .notif-time { font-size:11px; color:#999; margin-top:4px; }
+  .notif { display:flex; gap:12px; background:#fff; border:1px solid var(--line); border-radius:16px; padding:14px; margin-bottom:10px; }
+  .notif.unread { border-color:#f0d49a; background:#fffaf0; }
+  .notif .ni { width:36px; height:36px; border-radius:11px; background:var(--plum-50); color:var(--plum); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .notif .t { font-weight:700; font-size:13px; }
+  .notif .m { font-size:12px; color:#5d4e58; margin-top:2px; line-height:1.45; }
+  .notif .w { font-size:11px; color:var(--muted); margin-top:6px; }
+  .pill-btn { display:inline-flex; align-items:center; height:36px; padding:0 14px; border-radius:11px; border:1px solid var(--line-2); background:#fff; font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; margin-bottom:14px; color:var(--text); }
 
-  /* ---- Profil page ---- */
-  .profil-list-item {
-    width:100%; display:flex; align-items:center; justify-content:space-between; padding:16px 4px;
-    border-bottom:1px solid #eee; background:none; border-left:none; border-right:none; border-top:none;
-    font-size:15px; color:#2a1a26; cursor:pointer; font-family:inherit; text-align:left;
-  }
-  .profil-list-item:last-child { border-bottom:none; }
-  .profil-list-item.danger { color:#c5221f; }
-  .profil-list-item .pli-arrow { color:#ccc; }
+  /* ---- Profil ---- */
+  .profile-card { background:var(--plum-900); color:#fff; border-radius:18px; padding:18px; display:flex; gap:14px; align-items:center; margin-bottom:14px; }
+  .profile-card .avatar { width:56px; height:56px; border-radius:16px; font-size:18px; }
+  .profile-card .nm { font-weight:800; font-size:17px; }
+  .profile-card .mt { font-size:12px; color:#e5d3e1; margin-top:2px; }
+  .menu-item { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:10px; cursor:pointer; font-weight:600; width:100%; font-family:inherit; font-size:14px; color:var(--text); text-align:left; }
+  .menu-item .qi { width:34px; height:34px; border-radius:10px; background:var(--plum-50); color:var(--plum); display:flex; align-items:center; justify-content:center; }
+  .menu-item .chev { margin-left:auto; color:var(--muted); }
 
-  /* ---- Slip Gaji ---- */
-  .slip-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
-  .slip-head .sh-title { font-weight:700; font-size:16px; color:#4a1843; }
-  .slip-period-nav { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
-  .slip-period-nav button {
-    border:none; background:#f3ead8; color:#702464; font-size:16px; font-weight:700;
-    width:34px; height:34px; border-radius:50%; cursor:pointer; flex-shrink:0;
-  }
-  .slip-period-nav button:disabled { opacity:0.4; cursor:default; }
-  .slip-period-label { flex:1; text-align:center; font-size:13px; font-weight:600; color:#333; }
-  .slip-box { border:1.5px solid #e9ddf0; border-radius:14px; overflow:hidden; }
-  .slip-id-row {
-    display:flex; justify-content:space-between; gap:12px; background:#f8f3ea;
-    padding:14px 16px; font-size:13px; border-bottom:1.5px solid #e9ddf0;
-  }
-  .slip-id-row .si-label { color:#888; font-size:11px; }
-  .slip-id-row .si-value { font-weight:700; color:#2a1a26; margin-top:1px; }
-  .slip-cols { display:flex; }
-  .slip-col { flex:1; padding:14px 16px; }
-  .slip-col + .slip-col { border-left:1.5px solid #e9ddf0; }
-  .slip-col-title { font-size:12px; font-weight:800; letter-spacing:0.03em; color:#702464; margin-bottom:10px; }
-  .slip-line { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; padding:5px 0; gap:8px; }
-  .slip-line .sl-lbl { color:#555; }
-  .slip-line .sl-sub { color:#999; font-size:11px; }
-  .slip-line .sl-val { font-weight:600; color:#1a1a1a; text-align:right; white-space:nowrap; }
-  .slip-line.minus .sl-val { color:#c5221f; }
-  .slip-total-row {
-    display:flex; justify-content:space-between; font-size:13px; font-weight:800;
-    padding:10px 16px; background:#f8f3ea; border-top:1.5px solid #e9ddf0;
-  }
-  .slip-total-row.potongan .sl-val { color:#c5221f; }
-  .slip-bersih {
-    display:flex; justify-content:space-between; align-items:center; padding:16px;
-    background:linear-gradient(135deg,#8a3380,#5c1d52); color:#fff;
-  }
-  .slip-bersih .sb-lbl { font-size:12px; color:#f1dcec; font-weight:600; }
-  .slip-bersih .sb-val { font-size:20px; font-weight:800; }
-  .slip-note { font-size:11px; color:#999; text-align:center; margin-top:10px; }
-  .slip-empty { text-align:center; color:#888; font-size:13px; padding:30px 0; }
+  /* ---- Bottom nav ---- */
+  .bottom-nav { position:fixed; bottom:0; left:0; right:0; z-index:40; background:#fff; border-top:1px solid var(--line); display:none; justify-content:center; padding:8px 8px calc(8px + env(safe-area-inset-bottom)); }
+  .bottom-nav .inner { display:flex; width:100%; max-width:480px; gap:4px; }
+  .nav-item { flex:1; border:none; background:none; font-family:inherit; font-size:11px; font-weight:600; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:12px; cursor:pointer; position:relative; }
+  .nav-item.active { background:var(--plum-50); color:var(--plum); }
+  .nav-item .nav-dot { position:absolute; top:6px; left:calc(50% + 6px); width:8px; height:8px; border-radius:50%; background:var(--gold); display:none; }
+  .nav-item .nav-dot.show { display:block; }
 
-  @media (max-width: 400px) {
-    .slip-id-row { flex-wrap:wrap; gap:10px 16px; }
-    .slip-cols { flex-direction:column; }
-    .slip-col + .slip-col { border-left:none; border-top:1.5px solid #e9ddf0; }
-    .slip-line .sl-lbl { white-space:nowrap; }
-  }
-
-  /* ---- Izin/Cuti & Kasbon ---- */
-  select.form-select { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; background:#fff; }
-  textarea.form-textarea { width:100%; padding:12px 14px; border:1px solid #ddd; border-radius:10px; font-size:15px; margin-bottom:14px; font-family:inherit; resize:vertical; min-height:70px; }
-  .list-card { border:1px solid #eee; border-radius:12px; padding:12px; margin-bottom:10px; }
-  .list-card .lc-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
-  .list-card .lc-title { font-weight:700; font-size:14px; }
-  .list-card .lc-meta { font-size:12px; color:#888; margin-top:2px; }
-  .lc-badge { padding:3px 9px; border-radius:10px; font-size:11px; font-weight:700; }
-  .lc-badge.pending { background:#fef7e0; color:#b06000; }
-  .lc-badge.approved { background:#e6f4ea; color:#137333; }
-  .lc-badge.rejected { background:#fce8e6; color:#c5221f; }
-  .lc-badge.lunas { background:#e6f4ea; color:#137333; }
-  .lc-badge.disetujui { background:#e3eefc; color:#1a56b0; }
-  .lc-badge.ditolak { background:#fce8e6; color:#c5221f; }
-  .estimasi-lunas { background:#f3ead8; border-radius:10px; padding:10px 14px; font-size:13px; color:#4a1843; margin:-4px 0 14px; }
-  .estimasi-lunas b { font-size:14px; }
+  /* ---- Bottom sheet pilih shift ---- */
+  .sheet-overlay { display:none; position:fixed; inset:0; background:rgba(42,26,38,.5); z-index:60; align-items:flex-end; justify-content:center; }
+  .sheet { background:#fff; width:100%; max-width:480px; border-radius:24px 24px 0 0; padding:10px 18px calc(20px + env(safe-area-inset-bottom)); }
+  .sheet .grab { width:44px; height:5px; border-radius:99px; background:#e2d8cf; margin:0 auto 16px; }
+  .sheet h3 { margin:0; font-size:18px; font-weight:800; }
+  .sheet .sub { font-size:12px; color:var(--muted); margin:4px 0 6px; }
+  .sheet .btn { margin-top:10px; }
 </style>
 </head>
 <body>
-<div class="login-wrap" id="loginScreen">
-  <div class="login-card">
-    <div class="login-logo-circle"><img src="/logo.png" alt="Erly's Cake & Bakery" /></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></symbol>
+    <symbol id="i-cash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+    <symbol id="i-chev-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="i-chev-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <!-- ================= LOGIN ================= -->
+  <div class="login" id="loginScreen">
+    <img class="logo" src="/logo.png" alt="Erly's Cake & Bakery" />
     <h1>Masuk</h1>
-    <div class="sub">Absensi Erly's Cake &amp; Bakery</div>
-    <label>Nomor Telepon</label>
+    <div class="sub">Absensi karyawan Erly's Cake &amp; Bakery</div>
+    <label class="lbl">Nomor Telepon</label>
     <input type="tel" id="phoneInput" placeholder="Contoh: 081234567890" inputmode="numeric" />
-    <button class="btn btn-primary" id="checkPhoneBtn">Lanjutkan</button>
-    <a class="admin-entry-link" href="/admin.html">Masuk sebagai Admin</a>
+    <button class="btn" id="checkPhoneBtn" style="margin-top:14px">Lanjutkan</button>
     <div class="status" id="phoneStatus"></div>
+    <a class="admin-link" href="/admin.html">Masuk sebagai Admin</a>
+  </div>
+
+  <div id="mainWrap" style="display:none">
+    <!-- ================= DASHBOARD ================= -->
+    <div class="page active" id="page-dashboard">
+      <div class="dash-top">
+        <div class="avatar" id="dashAvatar">?</div>
+        <div><div class="hi" id="empName">Halo</div><div class="date" id="todayDateLabel"></div></div>
+        <div class="bell" id="dashBell"><svg class="ic"><use href="#i-bell"/></svg><span class="dot" id="bellCount"></span></div>
+      </div>
+      <div class="card presensi" id="presensiCard">
+        <div class="lbl-top">Absensi hari ini</div>
+        <div class="title-row"><div class="title" id="presensiStatusLabel">Memuat...</div><span class="badge muted" id="shiftChip">Shift belum dipilih</span></div>
+        <div class="loc-box" id="presensiDistanceLabel"><svg class="ic"><use href="#i-pin"/></svg><div><span id="locLine1">Lokasi belum dicek</span><b id="locLine2">Lokasi dicek saat kamu absen</b></div></div>
+        <button type="button" class="btn big-btn" id="ringBtn">MASUK</button>
+        <div id="ringExtra"></div>
+        <div class="ring-sub" id="ringSubTime">Lokasi dicek saat kamu menekan tombol MASUK.</div>
+        <img id="preview" class="preview" alt="" />
+        <div class="status" id="actionStatus"></div>
+      </div>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" />
+
+      <div class="section-label">Ringkasan Bulan Ini</div>
+      <div class="stat-grid">
+        <div class="stat"><div class="n" id="statHadir">0</div><div class="l">Kehadiran</div></div>
+        <div class="stat"><div class="n" id="statTidakHadir">0</div><div class="l">Tidak Hadir</div></div>
+        <div class="stat"><div class="n" id="statIjin">0</div><div class="l">Izin</div></div>
+        <div class="stat"><div class="n"><span id="statLembur">0</span><small> j</small></div><div class="l">Lembur</div></div>
+      </div>
+
+      <div class="section-label">Akses Cepat</div>
+      <div class="quick">
+        <button type="button" id="lihatSlipGaji"><span class="qi"><svg class="ic"><use href="#i-receipt"/></svg></span>Slip Gaji</button>
+        <button type="button" id="bukaKasbon"><span class="qi"><svg class="ic"><use href="#i-cash"/></svg></span>Kasbon</button>
+        <button type="button" id="bukaIjinCutiDash"><span class="qi"><svg class="ic"><use href="#i-calendar"/></svg></span>Izin / Cuti</button>
+      </div>
+    </div>
+
+    <!-- ================= RIWAYAT ================= -->
+    <div class="page" id="page-riwayat">
+      <div class="page-head"><div><h2>Riwayat Absensi</h2><div class="sub" id="historySub"></div></div></div>
+      <div class="month-nav">
+        <button class="nav-arrow" type="button" id="histPrev"><svg class="ic"><use href="#i-chev-left"/></svg></button>
+        <div class="label" id="histMonthLabel"></div>
+        <button class="nav-arrow" type="button" id="histNext"><svg class="ic"><use href="#i-chev-right"/></svg></button>
+      </div>
+      <input type="month" id="historyMonthInput" style="display:none" />
+      <div id="historyList"></div>
+      <div class="empty" id="historyEmpty"></div>
+    </div>
+
+    <!-- ================= NOTIFIKASI ================= -->
+    <div class="page" id="page-notifikasi">
+      <div class="page-head"><div><h2>Notifikasi</h2><div class="sub" id="notifSub"></div></div></div>
+      <div id="notifList"></div>
+      <div class="empty" id="notifEmpty"></div>
+    </div>
+
+    <!-- ================= PROFIL ================= -->
+    <div class="page" id="page-profil">
+      <div class="page-head"><div><h2>Profil</h2></div></div>
+      <div class="profile-card">
+        <div class="avatar" id="profilAvatar">?</div>
+        <div><div class="nm" id="profilName"></div><div class="mt" id="profilMeta"></div><div class="mt" id="profilPhone"></div></div>
+      </div>
+      <button type="button" class="menu-item" id="bukaIjinCuti"><span class="qi"><svg class="ic"><use href="#i-calendar"/></svg></span>Izin / Cuti<svg class="ic chev"><use href="#i-chev-right"/></svg></button>
+      <button type="button" class="menu-item" id="bukaSlipProfil"><span class="qi"><svg class="ic"><use href="#i-receipt"/></svg></span>Slip Gaji<svg class="ic chev"><use href="#i-chev-right"/></svg></button>
+      <button type="button" class="menu-item" id="bukaKasbonProfil"><span class="qi"><svg class="ic"><use href="#i-cash"/></svg></span>Kasbon<svg class="ic chev"><use href="#i-chev-right"/></svg></button>
+      <button type="button" class="btn ghost-danger" id="gantiNomor" style="margin-top:6px"><svg class="ic"><use href="#i-logout"/></svg>Keluar</button>
+    </div>
+
+    <!-- ================= SLIP GAJI ================= -->
+    <div class="page" id="page-slip">
+      <div class="page-head"><button class="back-btn" type="button" id="tutupSlip"><svg class="ic"><use href="#i-chev-left"/></svg></button><h2>Slip Gaji</h2></div>
+      <div class="month-nav">
+        <button class="nav-arrow" type="button" id="slipPrev"><svg class="ic"><use href="#i-chev-left"/></svg></button>
+        <div class="label" id="slipPeriodLabel">—</div>
+        <button class="nav-arrow" type="button" id="slipNext"><svg class="ic"><use href="#i-chev-right"/></svg></button>
+      </div>
+      <div id="slipBody"></div>
+    </div>
+
+    <!-- ================= IZIN / CUTI ================= -->
+    <div class="page" id="page-izin">
+      <div class="page-head"><button class="back-btn" type="button" id="tutupLeave"><svg class="ic"><use href="#i-chev-left"/></svg></button><h2>Izin / Cuti</h2></div>
+      <div class="card">
+        <label class="lbl" style="margin-top:0">Jenis</label>
+        <div class="seg3" id="leaveTypeSeg">
+          <button type="button" data-type="sakit">Sakit</button>
+          <button type="button" data-type="cuti" class="active">Cuti</button>
+          <button type="button" data-type="izin">Izin Lainnya</button>
+        </div>
+        <input type="hidden" id="leaveType" value="cuti" />
+        <div class="row2">
+          <div><label class="lbl">Mulai</label><input type="date" id="leaveStart" /></div>
+          <div><label class="lbl">Selesai</label><input type="date" id="leaveEnd" /></div>
+        </div>
+        <label class="lbl">Alasan (opsional)</label>
+        <textarea id="leaveReason" placeholder="Tuliskan alasan singkat..."></textarea>
+        <button class="btn" id="submitLeaveBtn" style="margin-top:14px">Ajukan</button>
+        <div class="status" id="leaveStatus"></div>
+      </div>
+      <div class="section-label">Riwayat Pengajuan</div>
+      <div id="leaveList"></div>
+      <div class="empty" id="leaveEmpty"></div>
+    </div>
+
+    <!-- ================= KASBON ================= -->
+    <div class="page" id="page-kasbon">
+      <div class="page-head"><button class="back-btn" type="button" id="tutupKasbon"><svg class="ic"><use href="#i-chev-left"/></svg></button><h2>Kasbon</h2></div>
+      <div class="card">
+        <label class="lbl" style="margin-top:0">Jenis pembayaran</label>
+        <div class="radio-card active" data-jenis="cicil"><span class="dotc"></span><div><div class="t">Cicil</div><div class="s">Dipotong dari gaji tiap bulan</div></div></div>
+        <div class="radio-card" data-jenis="potlang"><span class="dotc"></span><div><div class="t">Potong langsung</div><div class="s">Lunas sekaligus di gaji berikutnya</div></div></div>
+        <input type="hidden" id="kasbonJenis" value="cicil" />
+        <label class="lbl">Jumlah Pinjaman (Rp)</label>
+        <input type="text" id="kasbonJumlah" inputmode="numeric" placeholder="Contoh: 500000" />
+        <div id="kasbonCicilWrap">
+          <label class="lbl">Cicilan per Bulan (Rp)</label>
+          <input type="text" id="kasbonCicilanPerBulan" inputmode="numeric" placeholder="Contoh: 100000" />
+          <div class="hint" id="kasbonEstimasi" style="display:none;margin-top:6px"></div>
+        </div>
+        <label class="lbl">Catatan (opsional)</label>
+        <textarea id="kasbonCatatan" placeholder="Keperluan kasbon..."></textarea>
+        <button class="btn" id="submitKasbonBtn" style="margin-top:14px">Ajukan</button>
+        <div class="status" id="kasbonStatus"></div>
+      </div>
+      <div class="section-label">Riwayat Kasbon</div>
+      <div id="kasbonList"></div>
+      <div class="empty" id="kasbonEmpty"></div>
+    </div>
   </div>
 </div>
 
-<div class="wrap" id="mainWrap" style="display:none">
-
-  <!-- ================= DASHBOARD ================= -->
-  <div class="page active" id="page-dashboard">
-    <div class="profile-grad-card">
-      <img class="profile-avatar-float" id="historyAvatar" src="" onerror="this.style.visibility='hidden'" />
-      <div class="pg-name" id="empName"></div>
-      <div class="pg-meta" id="historyEmpMeta"></div>
-    </div>
-
-    <div class="card presensi-card" id="presensiCard">
-      <div class="presensi-date" id="todayDateLabel"></div>
-      <div class="presensi-status" id="presensiStatusLabel">Memuat...</div>
-      <div class="presensi-distance neutral" id="presensiDistanceLabel">Lokasi akan dicek saat absen</div>
-
-      <button type="button" class="ring-btn" id="ringBtn">MASUK</button>
-      <div class="ring-sub-time" id="ringSubTime"></div>
-      <div id="ringExtra"></div>
-
-      <div class="status" id="actionStatus" style="text-align:left"></div>
-    </div>
-
-    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" />
-    <img id="preview" class="preview" />
-
-    <div class="section-label">Ringkasan Bulan Ini</div>
-    <div class="stat-grid-2x2">
-      <div class="stat-tile kehadiran"><div class="st-num" id="statHadir">0</div><div class="st-lbl">Kehadiran</div></div>
-      <div class="stat-tile tidakhadir"><div class="st-num" id="statTidakHadir">0</div><div class="st-lbl">Tidak Hadir</div></div>
-      <div class="stat-tile ijin"><div class="st-num" id="statIjin">0</div><div class="st-lbl">Izin</div></div>
-      <div class="stat-tile lembur"><div class="st-num" id="statLembur">0</div><div class="st-lbl">Lembur (jam)</div></div>
-    </div>
-
-    <div class="section-label">Akses Cepat</div>
-    <div class="akses-cepat-row">
-      <button type="button" class="akses-card" id="lihatSlipGaji"><div class="ac-icon">&#128179;</div><div class="ac-label">Slip Gaji</div></button>
-      <button type="button" class="akses-card" id="bukaKasbon"><div class="ac-icon">&#128181;</div><div class="ac-label">Kasbon</div></button>
-    </div>
-  </div>
-
-  <!-- ================= RIWAYAT ABSENSI ================= -->
-  <div class="page" id="page-riwayat">
-    <div class="slip-head">
-      <div class="sh-title">Riwayat Absensi</div>
-      <input type="month" id="historyMonthInput" style="padding:6px 8px;border:1px solid #ddd;border-radius:8px;font-size:13px" />
-    </div>
-    <div id="historyList"></div>
-    <div class="hint" id="historyEmpty"></div>
-  </div>
-
-  <!-- ================= NOTIFIKASI ================= -->
-  <div class="page" id="page-notifikasi">
-    <div class="sh-title" style="margin-bottom:14px">Notifikasi</div>
-    <div id="notifList"></div>
-    <div class="hint" id="notifEmpty"></div>
-  </div>
-
-  <!-- ================= PROFIL ================= -->
-  <div class="page" id="page-profil">
-    <div class="profile-grad-card" style="margin-bottom:24px">
-      <img class="profile-avatar-float" id="profilAvatar" src="" onerror="this.style.visibility='hidden'" />
-      <div class="pg-name" id="profilName"></div>
-      <div class="pg-meta" id="profilMeta"></div>
-    </div>
-    <div class="card" style="padding:4px 16px">
-      <button type="button" class="profil-list-item" id="bukaIjinCuti"><span>Izin / Cuti</span><span class="pli-arrow">&#8250;</span></button>
-      <button type="button" class="profil-list-item danger" id="gantiNomor"><span>Keluar</span><span class="pli-arrow">&#8250;</span></button>
-    </div>
-  </div>
-
-  <!-- ================= SUB-HALAMAN (dibuka dari Akses Cepat / Profil) ================= -->
-  <div class="card" id="payslipCard" style="display:none">
-    <div class="slip-head">
-      <div class="sh-title">Slip Gaji</div>
-      <button class="btn btn-secondary" id="tutupSlip" style="width:auto; padding:8px 14px; margin:0; font-size:13px">Tutup</button>
-    </div>
-    <div class="slip-period-nav">
-      <button type="button" id="slipPrev" title="Periode sebelumnya">&#8249;</button>
-      <div class="slip-period-label" id="slipPeriodLabel">—</div>
-      <button type="button" id="slipNext" title="Periode berikutnya">&#8250;</button>
-    </div>
-    <div id="slipBody"></div>
-  </div>
-
-  <div class="card" id="leaveCard" style="display:none">
-    <div class="slip-head">
-      <div class="sh-title">Izin / Cuti</div>
-      <button class="btn btn-secondary" id="tutupLeave" style="width:auto; padding:8px 14px; margin:0; font-size:13px">Tutup</button>
-    </div>
-    <label>Jenis</label>
-    <select class="form-select" id="leaveType">
-      <option value="sakit">Sakit</option>
-      <option value="cuti">Cuti</option>
-      <option value="izin">Izin Lainnya</option>
-    </select>
-    <label>Tanggal Mulai</label>
-    <input type="date" id="leaveStart" />
-    <label>Tanggal Selesai</label>
-    <input type="date" id="leaveEnd" />
-    <label>Alasan (opsional)</label>
-    <textarea class="form-textarea" id="leaveReason" placeholder="Tuliskan alasan singkat..."></textarea>
-    <button class="btn btn-primary" id="submitLeaveBtn">Ajukan</button>
-    <div class="status" id="leaveStatus"></div>
-    <div class="muted" style="margin:14px 0 6px">Riwayat Pengajuan</div>
-    <div id="leaveList"></div>
-    <div class="hint" id="leaveEmpty"></div>
-  </div>
-
-  <div class="card" id="kasbonCard" style="display:none">
-    <div class="slip-head">
-      <div class="sh-title">Kasbon</div>
-      <button class="btn btn-secondary" id="tutupKasbon" style="width:auto; padding:8px 14px; margin:0; font-size:13px">Tutup</button>
-    </div>
-    <label>Jenis Pembayaran</label>
-    <select class="form-select" id="kasbonJenis">
-      <option value="cicil">Cicil (potong gaji bertahap)</option>
-      <option value="potlang">Potong Langsung (lunas sekaligus)</option>
-    </select>
-    <label>Jumlah Pinjaman (Rp)</label>
-    <input type="text" id="kasbonJumlah" inputmode="numeric" placeholder="Contoh: 500000" />
-    <div id="kasbonCicilWrap">
-      <label>Cicilan per Bulan (Rp)</label>
-      <input type="text" id="kasbonCicilanPerBulan" inputmode="numeric" placeholder="Contoh: 100000" />
-      <div class="estimasi-lunas" id="kasbonEstimasi" style="display:none"></div>
-    </div>
-    <label>Catatan (opsional)</label>
-    <textarea class="form-textarea" id="kasbonCatatan" placeholder="Keperluan kasbon..."></textarea>
-    <button class="btn btn-primary" id="submitKasbonBtn">Ajukan</button>
-    <div class="status" id="kasbonStatus"></div>
-    <div class="muted" style="margin:14px 0 6px">Riwayat Kasbon</div>
-    <div id="kasbonList"></div>
-    <div class="hint" id="kasbonEmpty"></div>
-  </div>
-
-  <div class="card" id="shiftCard" style="display:none">
-    <div class="sub">Lokasi terdeteksi: <span class="name-tag" id="shiftLocationName"></span></div>
-    <label>Pilih Shift Anda Hari Ini</label>
+<!-- ================= PILIH SHIFT (bottom sheet) ================= -->
+<div class="sheet-overlay" id="shiftCard">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h3>Pilih Shift Anda Hari Ini</h3>
+    <div class="sub"><span id="shiftLocationName"></span> · <span id="shiftDateLabel"></span></div>
+    <label class="lbl">Shift</label>
     <div id="shiftOptions"></div>
-    <button class="btn btn-secondary" id="batalShift">Batal</button>
+    <button class="btn" type="button" id="shiftConfirm">Absen Masuk</button>
+    <button class="btn secondary" type="button" id="batalShift">Batal</button>
   </div>
-
 </div>
 
 <!-- ================= BOTTOM NAV ================= -->
-<div class="bottom-nav" id="bottomNav" style="display:none">
-  <button type="button" class="nav-item active" data-navpage="dashboard"><span class="nav-icon">&#127968;</span>Dashboard</button>
-  <button type="button" class="nav-item" data-navpage="riwayat"><span class="nav-icon">&#128197;</span>Riwayat</button>
-  <button type="button" class="nav-item" data-navpage="notifikasi"><span class="nav-icon">&#128276;</span><span class="nav-dot" id="notifDot"></span>Notifikasi</button>
-  <button type="button" class="nav-item" data-navpage="profil"><span class="nav-icon">&#128100;</span>Profil</button>
+<div class="bottom-nav" id="bottomNav">
+  <div class="inner">
+    <button type="button" class="nav-item active" data-navpage="dashboard"><svg class="ic"><use href="#i-dashboard"/></svg>Dashboard</button>
+    <button type="button" class="nav-item" data-navpage="riwayat"><svg class="ic"><use href="#i-clock"/></svg>Riwayat</button>
+    <button type="button" class="nav-item" data-navpage="notifikasi"><svg class="ic"><use href="#i-bell"/></svg><span class="nav-dot" id="notifDot"></span>Notifikasi</button>
+    <button type="button" class="nav-item" data-navpage="profil"><svg class="ic"><use href="#i-user"/></svg>Profil</button>
+  </div>
 </div>
 
 <script>
@@ -399,12 +353,9 @@ const bottomNav = document.getElementById('bottomNav');
 const shiftCard = document.getElementById('shiftCard');
 const phoneInput = document.getElementById('phoneInput');
 const phoneStatus = document.getElementById('phoneStatus');
-const empName = document.getElementById('empName');
 const photoInput = document.getElementById('photoInput');
 const preview = document.getElementById('preview');
 const actionStatus = document.getElementById('actionStatus');
-const shiftLocationName = document.getElementById('shiftLocationName');
-const shiftOptions = document.getElementById('shiftOptions');
 
 let currentPhone = '';
 let currentType = null;
@@ -412,64 +363,65 @@ let currentShift = null;
 let currentLat = null;
 let currentLng = null;
 let currentProfile = null;
-let lastOpenedSubScreen = null; // untuk tombol "Tutup" pada Slip Gaji/Izin/Kasbon kembali ke page asal
+let lastPage = 'dashboard';
 
-function showStatus(el, msg, cls) {
-  el.textContent = msg;
-  el.className = 'status ' + cls;
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function initials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return ((parts[0] || '?')[0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+}
+function showStatus(el, msg, cls) { el.textContent = msg; el.className = 'status ' + cls; }
+function formatRupiah(n) {
+  const num = Number(n) || 0;
+  return (num < 0 ? '-' : '') + 'Rp' + Math.abs(Math.round(num)).toLocaleString('id-ID');
+}
+const BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+const BULAN_PENDEK = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+function tglPendek(ymd, withYear = true) { const [y, m, d] = ymd.split('-').map(Number); return `${d} ${BULAN_PENDEK[m - 1]}${withYear ? ' ' + y : ''}`; }
+function rentangTgl(a, b) {
+  if (!b || a === b) return tglPendek(a);
+  const [ya, ma] = a.split('-'); const [yb, mb] = b.split('-');
+  if (ya === yb && ma === mb) return `${Number(a.slice(8))}–${tglPendek(b)}`;
+  return `${tglPendek(a, ya !== yb)} – ${tglPendek(b)}`;
+}
+function setAvatar(el, name, photoUrl) {
+  el.textContent = initials(name);
+  if (!photoUrl) return;
+  const img = new Image();
+  img.onload = () => { el.innerHTML = ''; el.appendChild(img); };
+  img.src = photoUrl;
 }
 
-// ---- Navigasi bottom nav & perpindahan antar page ----
-const pages = ['dashboard', 'riwayat', 'notifikasi', 'profil'];
+// ---- Navigasi ----
+const pages = ['dashboard', 'riwayat', 'notifikasi', 'profil', 'slip', 'izin', 'kasbon'];
+const navPages = ['dashboard', 'riwayat', 'notifikasi', 'profil'];
 function showPage(name) {
-  pages.forEach((p) => {
-    document.getElementById('page-' + p).classList.toggle('active', p === name);
-  });
-  document.querySelectorAll('.nav-item').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.navpage === name);
-  });
-  // Sembunyikan sub-halaman kalau sedang terbuka
-  ['payslipCard', 'leaveCard', 'kasbonCard'].forEach((id) => { document.getElementById(id).style.display = 'none'; });
+  pages.forEach((p) => document.getElementById('page-' + p).classList.toggle('active', p === name));
+  if (navPages.includes(name)) lastPage = name;
+  document.querySelectorAll('.nav-item').forEach((btn) => btn.classList.toggle('active', btn.dataset.navpage === lastPage));
+  window.scrollTo(0, 0);
   if (name === 'riwayat') loadHistory();
   if (name === 'notifikasi') loadNotifications();
   if (name === 'profil') fillProfilPage();
 }
-document.querySelectorAll('.nav-item').forEach((btn) => {
-  btn.addEventListener('click', () => showPage(btn.dataset.navpage));
-});
-
-function openSubScreen(cardId, fromPage) {
-  lastOpenedSubScreen = fromPage;
-  pages.forEach((p) => document.getElementById('page-' + p).classList.remove('active'));
-  bottomNav.style.display = 'none';
-  document.getElementById(cardId).style.display = 'block';
-}
-function closeSubScreen(cardId) {
-  document.getElementById(cardId).style.display = 'none';
-  bottomNav.style.display = 'flex';
-  showPage(lastOpenedSubScreen || 'dashboard');
-}
+document.querySelectorAll('.nav-item').forEach((btn) => btn.addEventListener('click', () => showPage(btn.dataset.navpage)));
+document.getElementById('dashBell').addEventListener('click', () => showPage('notifikasi'));
 
 document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
   const phone = phoneInput.value.trim();
   if (!phone) return showStatus(phoneStatus, 'Nomor telepon wajib diisi', 'err');
   showStatus(phoneStatus, 'Memeriksa...', 'warn');
   try {
-    const res = await fetch('/api/check-phone', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone }),
-    });
+    const res = await fetch('/api/check-phone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
     const data = await res.json();
     if (!res.ok) return showStatus(phoneStatus, data.error || 'Nomor tidak ditemukan', 'err');
     currentPhone = phone;
     currentProfile = data;
-
     loginScreen.style.display = 'none';
     mainWrap.style.display = 'block';
     bottomNav.style.display = 'flex';
-    phoneStatus.style.display = 'none';
+    phoneStatus.className = 'status';
     showPage('dashboard');
-
     historyMonthInput.value = new Date().toISOString().slice(0, 7);
     loadHistory(true);
     checkNotifDot();
@@ -477,16 +429,14 @@ document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
     showStatus(phoneStatus, 'Gagal menghubungi server: ' + e.message, 'err');
   }
 });
-document.getElementById('phoneInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') document.getElementById('checkPhoneBtn').click();
-});
+phoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('checkPhoneBtn').click(); });
 
 document.getElementById('gantiNomor').addEventListener('click', () => {
   mainWrap.style.display = 'none';
   bottomNav.style.display = 'none';
   loginScreen.style.display = 'flex';
   preview.style.display = 'none';
-  actionStatus.style.display = 'none';
+  actionStatus.className = 'status';
 });
 
 // ---- Slip Gaji ----
@@ -494,19 +444,7 @@ const slipBody = document.getElementById('slipBody');
 const slipPeriodLabel = document.getElementById('slipPeriodLabel');
 let slipFrom = null;
 let slipTo = null;
-
-function formatRupiah(n) {
-  const num = Number(n) || 0;
-  const sign = num < 0 ? '-' : '';
-  return sign + 'Rp' + Math.abs(Math.round(num)).toLocaleString('id-ID');
-}
-
-function fmtPeriodLabel(from, to) {
-  const opt = { day: 'numeric', month: 'long', year: 'numeric' };
-  const a = new Date(from + 'T00:00:00').toLocaleDateString('id-ID', opt);
-  const b = new Date(to + 'T00:00:00').toLocaleDateString('id-ID', opt);
-  return `${a} – ${b}`;
-}
+let slipBackTo = 'dashboard';
 
 function shiftPayrollPeriod(to, deltaMonths) {
   const [y, m] = to.split('-').map(Number);
@@ -517,130 +455,85 @@ function shiftPayrollPeriod(to, deltaMonths) {
   const newFrom = `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}-26`;
   return { from: newFrom, to: newTo };
 }
+function periodName(to) { const [y, m] = to.split('-').map(Number); return `${BULAN[m - 1]} ${y}`; }
 
 async function loadPayslip() {
-  slipPeriodLabel.textContent = slipFrom && slipTo ? fmtPeriodLabel(slipFrom, slipTo) : 'Memuat...';
-  slipBody.innerHTML = '<div class="slip-empty">Memuat slip gaji...</div>';
+  slipPeriodLabel.textContent = slipTo ? periodName(slipTo) : 'Memuat...';
+  slipBody.innerHTML = '<div class="empty">Memuat slip gaji...</div>';
   try {
     const params = new URLSearchParams({ phone: currentPhone });
     if (slipFrom) params.set('from', slipFrom);
     if (slipTo) params.set('to', slipTo);
     const res = await fetch(`/api/my-payslip?${params.toString()}`);
     const data = await res.json();
-    if (!res.ok) { slipBody.innerHTML = `<div class="slip-empty">${data.error || 'Gagal memuat slip gaji'}</div>`; return; }
-
+    if (!res.ok) { slipBody.innerHTML = `<div class="empty">${esc(data.error || 'Gagal memuat slip gaji')}</div>`; return; }
     slipFrom = data.from; slipTo = data.to;
-    slipPeriodLabel.textContent = fmtPeriodLabel(data.from, data.to);
-
+    slipPeriodLabel.textContent = periodName(data.to);
     const s = data.slip;
-    if (!s) { slipBody.innerHTML = '<div class="slip-empty">Belum ada data gaji untuk periode ini.</div>'; return; }
-
-    const emp = data.employee;
+    if (!s) { slipBody.innerHTML = '<div class="empty">Belum ada data gaji untuk periode ini.</div>'; return; }
+    const lemburJam = (s.lemburAwalJam || 0) + (s.lemburAkhirJam || 0) + (s.lemburTambahanJam || 0);
+    const lemburRp = (s.lemburAwalRp || 0) + (s.lemburAkhirRp || 0) + (s.lemburTambahanRp || 0);
+    const pendapatan = [
+      ['Gaji Pokok', s.gajiPokok],
+      ['Tunjangan Fungsional', s.tunjanganFungsional],
+      ['Tunjangan Natura', s.tunjanganNatura],
+      [`Uang Makan · ${s.hariHadir} hari`, s.uangMakan],
+      [`Uang Transport · ${s.hariHadir} hari`, s.uangTransport],
+      [`Lembur · ${lemburJam} jam`, lemburRp],
+      [s.kerajinanEligible ? 'Kerajinan' : 'Kerajinan (tidak memenuhi syarat)', s.kerajinan],
+    ];
+    const potongan = [
+      [`Tidak masuk · ${s.offBerlebih} hari`, s.potonganOff],
+      [`Terlambat · ${s.terlambatKali} kali`, s.potonganTerlambat],
+      ['Pulang cepat', s.potonganPulangCepat],
+      ['Kasbon', s.potonganKasbon],
+    ];
+    const totalPend = pendapatan.reduce((a, [, v]) => a + (Number(v) || 0), 0);
+    const totalPot = potongan.reduce((a, [, v]) => a + (Number(v) || 0), 0);
+    const line = ([l, v]) => `<div class="slip-line"><span>${esc(l)}</span><span>${formatRupiah(v)}</span></div>`;
     slipBody.innerHTML = `
-      <div class="slip-box">
-        <div class="slip-id-row">
-          <div><div class="si-label">No ID</div><div class="si-value">${emp.idNumber || '—'}</div></div>
-          <div><div class="si-label">Nama</div><div class="si-value">${emp.name}</div></div>
-          <div><div class="si-label">Jabatan</div><div class="si-value">${emp.position || '—'}</div></div>
-        </div>
-        <div class="slip-cols">
-          <div class="slip-col">
-            <div class="slip-col-title">PENDAPATAN</div>
-            <div class="slip-line"><span class="sl-lbl">Gaji Pokok</span><span class="sl-val">${formatRupiah(s.gajiPokok)}</span></div>
-            <div class="slip-line"><span class="sl-lbl">Uang Makan</span><span class="sl-val">${formatRupiah(s.uangMakan)}</span></div>
-            <div class="slip-line"><span class="sl-lbl">Lembur Awal <span class="sl-sub">(${s.lemburAwalJam} j)</span></span><span class="sl-val">${formatRupiah(s.lemburAwalRp)}</span></div>
-            <div class="slip-line"><span class="sl-lbl">Lembur Akhir <span class="sl-sub">(${s.lemburAkhirJam} j)</span></span><span class="sl-val">${formatRupiah(s.lemburAkhirRp)}</span></div>
-            <div class="slip-line"><span class="sl-lbl">Lembur Tambahan <span class="sl-sub">(${s.lemburTambahanJam} j)</span></span><span class="sl-val">${formatRupiah(s.lemburTambahanRp)}</span></div>
-          </div>
-          <div class="slip-col">
-            <div class="slip-col-title">POTONGAN</div>
-            <div class="slip-line minus"><span class="sl-lbl">Tidak Masuk <span class="sl-sub">(${s.offBerlebih} hr)</span></span><span class="sl-val">${formatRupiah(s.potonganOff)}</span></div>
-            <div class="slip-line minus"><span class="sl-lbl">Terlambat <span class="sl-sub">(${s.terlambatKali}x, ${s.terlambatJam} j)</span></span><span class="sl-val">${formatRupiah(s.potonganTerlambat)}</span></div>
-            <div class="slip-line minus"><span class="sl-lbl">Pulang Cepat <span class="sl-sub">(${s.pulangCepatJam} j)</span></span><span class="sl-val">${formatRupiah(s.potonganPulangCepat)}</span></div>
-          </div>
-        </div>
-        <div class="slip-total-row"><span>TOTAL PENDAPATAN</span><span class="sl-val">${formatRupiah(s.totalPendapatan)}</span></div>
-        <div class="slip-total-row potongan"><span>TOTAL POTONGAN</span><span class="sl-val">${formatRupiah(s.totalPotongan)}</span></div>
-        <div class="slip-total-row">
-          <span>Kerajinan ${s.kerajinanEligible ? '' : '<span class="sl-sub">(tidak memenuhi syarat)</span>'}</span>
-          <span class="sl-val">${formatRupiah(s.kerajinan)}</span>
-        </div>
-        <div class="slip-total-row"><span>Transport</span><span class="sl-val">${formatRupiah(s.uangTransport)}</span></div>
-        <div class="slip-bersih">
-          <span class="sb-lbl">GAJI BERSIH</span>
-          <span class="sb-val">${formatRupiah(s.gajiBersih)}</span>
-        </div>
+      <div class="slip-hero">
+        <div class="l">Gaji bersih · ${rentangTgl(data.from, data.to)}</div>
+        <div class="v">${formatRupiah(s.gajiBersih)}</div>
+        <div class="l">Hadir ${s.hariHadir} hari · Telat ${s.terlambatKali} kali</div>
       </div>
-      <div class="slip-note">Hari hadir: ${s.hariHadir} • Dibuat otomatis oleh sistem absensi</div>
+      <div class="slip-sec"><div class="h">Pendapatan</div>${pendapatan.map(line).join('')}<div class="slip-line total"><span>Total pendapatan</span><span>${formatRupiah(totalPend)}</span></div></div>
+      <div class="slip-sec"><div class="h">Potongan</div>${potongan.map(line).join('')}<div class="slip-line total"><span>Total potongan</span><span>${formatRupiah(totalPot)}</span></div></div>
+      <div class="hint" style="text-align:center">Dibuat otomatis oleh sistem absensi</div>
     `;
   } catch (e) {
-    slipBody.innerHTML = `<div class="slip-empty">Gagal memuat slip gaji: ${e.message}</div>`;
+    slipBody.innerHTML = `<div class="empty">Gagal memuat slip gaji: ${esc(e.message)}</div>`;
   }
 }
+function openSlip(from) { slipBackTo = from; slipFrom = null; slipTo = null; showPage('slip'); loadPayslip(); }
+document.getElementById('lihatSlipGaji').addEventListener('click', () => openSlip('dashboard'));
+document.getElementById('bukaSlipProfil').addEventListener('click', () => openSlip('profil'));
+document.getElementById('tutupSlip').addEventListener('click', () => showPage(slipBackTo));
+document.getElementById('slipPrev').addEventListener('click', () => { if (!slipTo) return; const p = shiftPayrollPeriod(slipTo, -1); slipFrom = p.from; slipTo = p.to; loadPayslip(); });
+document.getElementById('slipNext').addEventListener('click', () => { if (!slipTo) return; const p = shiftPayrollPeriod(slipTo, 1); slipFrom = p.from; slipTo = p.to; loadPayslip(); });
 
-document.getElementById('lihatSlipGaji').addEventListener('click', () => {
-  slipFrom = null; slipTo = null;
-  openSubScreen('payslipCard', 'dashboard');
-  loadPayslip();
-});
-document.getElementById('tutupSlip').addEventListener('click', () => closeSubScreen('payslipCard'));
-document.getElementById('slipPrev').addEventListener('click', () => {
-  if (!slipTo) return;
-  const p = shiftPayrollPeriod(slipTo, -1);
-  slipFrom = p.from; slipTo = p.to;
-  loadPayslip();
-});
-document.getElementById('slipNext').addEventListener('click', () => {
-  if (!slipTo) return;
-  const p = shiftPayrollPeriod(slipTo, 1);
-  slipFrom = p.from; slipTo = p.to;
-  loadPayslip();
-});
-
-// ---- Riwayat & ringkasan absensi ----
+// ---- Riwayat & ringkasan ----
 const historyMonthInput = document.getElementById('historyMonthInput');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
-
-historyMonthInput.addEventListener('change', loadHistory);
-
-function fmtTerlambat(jam, menit) {
-  if (!jam && !menit) return '0';
-  return (jam > 0 ? jam + 'j ' : '') + menit + 'm';
-}
-
-function timeToMinutes(hhmm) {
-  if (!hhmm) return null;
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
+function timeToMinutes(hhmm) { if (!hhmm) return null; const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
 let currentToleransiMenit = 15;
+function shiftMonth(ym, delta) { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + delta, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+document.getElementById('histPrev').addEventListener('click', () => { historyMonthInput.value = shiftMonth(historyMonthInput.value, -1); loadHistory(); });
+document.getElementById('histNext').addEventListener('click', () => { historyMonthInput.value = shiftMonth(historyMonthInput.value, 1); loadHistory(); });
 
-function attendanceStatusBadge(record) {
-  if (!record) return '';
-  const t = timeToMinutes(record.timeHHMM);
-  if (record.type === 'masuk') {
-    const start = timeToMinutes(record.shiftStart);
-    if (start === null) return '';
-    if (t > start + currentToleransiMenit) return '<span class="stat-badge late">Terlambat</span>';
-    return '<span class="stat-badge ontime">Tepat Waktu</span>';
-  }
-  const end = timeToMinutes(record.shiftEnd);
-  if (end === null) return '';
-  if (t > end) return '<span class="stat-badge overtime">Lembur</span>';
-  if (t < end) return '<span class="stat-badge early">Pulang Cepat</span>';
-  return '<span class="stat-badge ontime">Tepat Waktu</span>';
-}
-
-// ---- Tombol presensi berbentuk cincin, satu tombol untuk seluruh alur ----
-// Urutan: MASUK -> PULANG -> (opsional) LEMBUR MASUK -> LEMBUR PULANG -> SELESAI
+// ---- Tombol absen: satu tombol untuk seluruh alur ----
+// Urutan: MASUK -> PULANG -> SELESAI (+ tombol "Lembur Masuk") -> LEMBUR PULANG -> SELESAI
 const ringBtn = document.getElementById('ringBtn');
 const ringSubTime = document.getElementById('ringSubTime');
 const ringExtra = document.getElementById('ringExtra');
 const presensiStatusLabel = document.getElementById('presensiStatusLabel');
 
 function renderRingButton(today) {
-  document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const chip = document.getElementById('shiftChip');
+  if (today.shift) { chip.textContent = `${today.shift}${today.shiftStart ? ' · ' + today.shiftStart + '–' + today.shiftEnd : ''}`; chip.className = 'badge lembur'; }
+  else { chip.textContent = 'Shift belum dipilih'; chip.className = 'badge muted'; }
 
   ringBtn.disabled = false;
   ringBtn.classList.remove('done');
@@ -648,67 +541,64 @@ function renderRingButton(today) {
   ringBtn.onclick = null;
 
   if (!today.masuk) {
-    presensiStatusLabel.textContent = 'Belum Absen';
+    presensiStatusLabel.textContent = 'Belum absen masuk';
     ringBtn.textContent = 'MASUK';
-    ringSubTime.textContent = '';
+    ringSubTime.textContent = 'Lokasi dicek saat kamu menekan tombol MASUK.';
     ringBtn.onclick = () => startAbsen('masuk');
     return;
   }
   if (!today.keluar) {
-    presensiStatusLabel.textContent = 'Presensi Pulang';
+    presensiStatusLabel.textContent = 'Sudah masuk ' + today.masuk;
     ringBtn.textContent = 'PULANG';
-    ringSubTime.textContent = 'Masuk ' + today.masuk + ' WIB';
+    ringSubTime.textContent = 'Lokasi dicek saat kamu menekan tombol PULANG.';
     ringBtn.onclick = () => startAbsen('keluar');
     return;
   }
-  // Masuk & Pulang selesai — Lembur bersifat opsional.
-  ringSubTime.textContent = `Masuk ${today.masuk} WIB • Pulang ${today.keluar} WIB`;
+  ringSubTime.textContent = `Masuk ${today.masuk} · Pulang ${today.keluar}`;
   if (!today.lemburMasuk) {
-    presensiStatusLabel.textContent = 'Presensi Selesai';
+    presensiStatusLabel.textContent = 'Absensi selesai';
     ringBtn.textContent = '✓ SELESAI';
     ringBtn.classList.add('done');
     ringBtn.disabled = true;
-    ringExtra.innerHTML = '<button type="button" class="ring-extra-btn" id="btnMulaiLembur">+ Lembur Masuk</button>';
+    ringExtra.innerHTML = '<button type="button" class="btn secondary extra-btn" id="btnMulaiLembur">+ Lembur Masuk</button>';
     document.getElementById('btnMulaiLembur').addEventListener('click', () => startLembur('lembur_masuk'));
     return;
   }
   if (!today.lemburKeluar) {
-    presensiStatusLabel.textContent = 'Sedang Lembur';
+    presensiStatusLabel.textContent = 'Sedang lembur';
     ringBtn.textContent = 'LEMBUR PULANG';
-    ringSubTime.textContent += ` • Lembur Masuk ${today.lemburMasuk} WIB`;
+    ringSubTime.textContent += ` · Lembur masuk ${today.lemburMasuk}`;
     ringBtn.onclick = () => startLembur('lembur_keluar');
     return;
   }
-  presensiStatusLabel.textContent = 'Presensi Selesai';
+  presensiStatusLabel.textContent = 'Absensi selesai';
   ringBtn.textContent = '✓ SELESAI';
   ringBtn.classList.add('done');
   ringBtn.disabled = true;
-  ringSubTime.textContent += ` • Lembur ${today.lemburMasuk}–${today.lemburKeluar} WIB`;
+  ringSubTime.textContent += ` · Lembur ${today.lemburMasuk}–${today.lemburKeluar}`;
 }
 
-// ---- Jarak ke lokasi presensi terdekat (dicek diam-diam kalau izin lokasi sudah diberikan) ----
+function setLocBox(state, line1, line2) {
+  document.getElementById('presensiDistanceLabel').className = 'loc-box' + (state ? ' ' + state : '');
+  document.getElementById('locLine1').textContent = line1;
+  document.getElementById('locLine2').textContent = line2;
+}
+// Jarak ke lokasi terdekat (dicek diam-diam kalau izin lokasi sudah pernah diberikan)
 async function silentDistanceCheck() {
-  const distEl = document.getElementById('presensiDistanceLabel');
   try {
     if (!navigator.permissions || !navigator.geolocation) return;
     const perm = await navigator.permissions.query({ name: 'geolocation' });
     if (perm.state !== 'granted') return;
     navigator.geolocation.getCurrentPosition(async (pos) => {
       try {
-        const res = await fetch('/api/nearest-location', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        });
+        const res = await fetch('/api/nearest-location', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }) });
         const data = await res.json();
         if (!res.ok) return;
-        const within = data.withinRadius;
-        distEl.className = 'presensi-distance ' + (data.melebihiJarakMaksimal ? 'bad' : (within ? 'ok' : 'bad'));
-        distEl.textContent = data.melebihiJarakMaksimal
-          ? `${data.name}: ${Math.round(data.distanceMeters)} m (terlalu jauh, maks ${data.maxDistanceMeters} m — absen akan ditolak)`
-          : `${data.name}: ${Math.round(data.distanceMeters)} m ${within ? '(dalam radius)' : '(di luar radius)'}`;
-      } catch (e) { /* diam-diam gagal, biarkan label default */ }
+        if (data.melebihiJarakMaksimal) setLocBox('bad', 'Terlalu jauh dari lokasi', `${data.name} · ${Math.round(data.distanceMeters)} m (maks ${data.maxDistanceMeters} m)`);
+        else setLocBox(data.withinRadius ? 'ok' : 'bad', 'Lokasi terdeteksi', `${data.name} · ${data.withinRadius ? 'di dalam radius' : 'di luar radius (' + Math.round(data.distanceMeters) + ' m)'}`);
+      } catch (e) { /* biarkan label default */ }
     }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 });
-  } catch (e) { /* Permissions API tidak didukung — biarkan label default */ }
+  } catch (e) { /* Permissions API tidak didukung */ }
 }
 
 async function loadHistory(alsoSilentDistance) {
@@ -717,56 +607,51 @@ async function loadHistory(alsoSilentDistance) {
   try {
     const month = historyMonthInput.value || new Date().toISOString().slice(0, 7);
     historyMonthInput.value = month;
+    const [y, m] = month.split('-').map(Number);
+    document.getElementById('histMonthLabel').textContent = `${BULAN[m - 1]} ${y}`;
     const res = await fetch(`/api/my-records?phone=${encodeURIComponent(currentPhone)}&month=${month}`);
     const data = await res.json();
     if (!res.ok) { historyEmpty.textContent = data.error || 'Gagal memuat riwayat'; return; }
 
-    empName.textContent = data.name;
-    document.getElementById('historyEmpMeta').textContent = [data.position, data.idNumber ? 'No ID: ' + data.idNumber : ''].filter(Boolean).join(' • ');
-    const avatarEl = document.getElementById('historyAvatar');
-    if (data.photoUrl) { avatarEl.src = data.photoUrl; avatarEl.style.visibility = 'visible'; }
-    else { avatarEl.style.visibility = 'hidden'; }
-
-    document.getElementById('statHadir').textContent = data.summary.hariHadir;
-    document.getElementById('statTidakHadir').textContent = data.summary.tidakHadir;
-    document.getElementById('statIjin').textContent = data.summary.ijin;
-    document.getElementById('statLembur').textContent = data.totalLemburJam;
-
-    renderRingButton(data.today);
+    currentProfile = { ...(currentProfile || {}), ...data };
+    document.getElementById('empName').textContent = 'Halo, ' + String(data.name || '').split(' ')[0];
+    setAvatar(document.getElementById('dashAvatar'), data.name, data.photoUrl);
     currentToleransiMenit = data.toleransiMenit ?? 15;
+    // Ringkasan & tombol absen di Dashboard selalu bulan berjalan.
+    const isCurrentMonth = data.today && data.today.dateKey && month === data.today.dateKey.slice(0, 7);
+    if (isCurrentMonth) {
+      document.getElementById('statHadir').textContent = data.summary.hariHadir;
+      document.getElementById('statTidakHadir').textContent = data.summary.tidakHadir;
+      document.getElementById('statIjin').textContent = data.summary.ijin;
+      document.getElementById('statLembur').textContent = data.totalLemburJam;
+      renderRingButton(data.today);
+    }
+    document.getElementById('historySub').textContent = `${data.summary.hariHadir} hadir · ${data.summary.ijin} izin ${isCurrentMonth ? 'bulan ini' : 'di bulan ini'}`;
     if (alsoSilentDistance) silentDistanceCheck();
 
-    if (!data.records || data.records.length === 0) {
-      historyEmpty.textContent = 'Belum ada riwayat absen di bulan ini.';
-      return;
-    }
-    historyEmpty.textContent = '';
-
     const byDate = {};
-    const order = [];
-    data.records.forEach((r) => {
-      if (!byDate[r.dateKey]) { byDate[r.dateKey] = { masuk: null, keluar: null }; order.push(r.dateKey); }
-      byDate[r.dateKey][r.type] = r;
-    });
-
-    order.forEach((dateKey) => {
-      const d = byDate[dateKey];
-      const ref = d.masuk || d.keluar || d.lembur_masuk || d.lembur_keluar;
-      const anyInvalid = (d.masuk && !d.masuk.withinRadius) || (d.keluar && !d.keluar.withinRadius);
-      const hasLembur = d.lembur_masuk || d.lembur_keluar;
+    (data.records || []).forEach((r) => { if (!byDate[r.dateKey]) byDate[r.dateKey] = {}; byDate[r.dateKey][r.type] = r; });
+    const leaveByDate = {};
+    (data.leaveDays || []).forEach((l) => { leaveByDate[l.dateKey] = l.type; });
+    const dates = [...new Set([...Object.keys(byDate), ...Object.keys(leaveByDate)])].sort().reverse();
+    historyEmpty.textContent = dates.length === 0 ? 'Belum ada riwayat absen di bulan ini.' : '';
+    const leaveLbl = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
+    dates.forEach((dk) => {
+      const d = byDate[dk] || {};
+      const dateLabel = new Date(dk + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+      let time, badge;
+      if (!d.masuk && !d.keluar && leaveByDate[dk]) {
+        time = 'Tidak masuk';
+        badge = `<span class="badge izin">${leaveLbl[leaveByDate[dk]] || 'Izin'}</span>`;
+      } else {
+        const akhir = d.lembur_keluar || d.keluar;
+        time = `${d.masuk ? d.masuk.timeHHMM : '··:··'} – ${akhir ? akhir.timeHHMM : '··:··'}`;
+        const late = d.masuk && d.masuk.shiftStart && timeToMinutes(d.masuk.timeHHMM) > timeToMinutes(d.masuk.shiftStart) + currentToleransiMenit;
+        badge = late ? '<span class="badge terlambat">Terlambat</span>' : (d.lembur_masuk ? '<span class="badge lembur">Lembur</span>' : '<span class="badge hadir">Hadir</span>');
+      }
       const card = document.createElement('div');
-      card.className = 'day-card';
-      const dateLabel = new Date(dateKey + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-      card.innerHTML = `
-        <div class="dc-date">${dateLabel}</div>
-        <div class="dc-row"><span class="dc-lbl">Check In</span><span style="display:flex;align-items:center;gap:6px"><span class="dc-time">${d.masuk ? d.masuk.timeHHMM + ' WIB' : '—'}</span>${attendanceStatusBadge(d.masuk)}</span></div>
-        <div class="dc-row"><span class="dc-lbl">Check Out</span><span style="display:flex;align-items:center;gap:6px"><span class="dc-time">${d.keluar ? d.keluar.timeHHMM + ' WIB' : '—'}</span>${attendanceStatusBadge(d.keluar)}</span></div>
-        ${hasLembur ? `
-        <div class="dc-row"><span class="dc-lbl">Lembur Masuk</span><span class="dc-time">${d.lembur_masuk ? d.lembur_masuk.timeHHMM + ' WIB' : '—'}</span></div>
-        <div class="dc-row"><span class="dc-lbl">Lembur Pulang</span><span class="dc-time">${d.lembur_keluar ? d.lembur_keluar.timeHHMM + ' WIB' : '—'}</span></div>
-        ` : ''}
-        <div class="dc-meta">${ref.shift ? ref.shift + ' • ' : ''}${ref.nearestLocation || ''}${anyInvalid ? ' • <span style="color:#c5221f">di luar radius</span>' : ''}</div>
-      `;
+      card.className = 'list-card';
+      card.innerHTML = `<div class="top"><div><div class="t">${esc(dateLabel)}</div><div class="s">${esc(time)}</div></div>${badge}</div>`;
       historyList.appendChild(card);
     });
   } catch (e) {
@@ -774,34 +659,55 @@ async function loadHistory(alsoSilentDistance) {
   }
 }
 
-// ---- Profil page ----
+// ---- Profil ----
 function fillProfilPage() {
-  document.getElementById('profilName').textContent = empName.textContent;
-  document.getElementById('profilMeta').textContent = document.getElementById('historyEmpMeta').textContent;
-  const src = document.getElementById('historyAvatar');
-  const dst = document.getElementById('profilAvatar');
-  if (src.style.visibility !== 'hidden' && src.src) { dst.src = src.src; dst.style.visibility = 'visible'; }
-  else { dst.style.visibility = 'hidden'; }
+  const p = currentProfile || {};
+  document.getElementById('profilName').textContent = p.name || '';
+  document.getElementById('profilMeta').textContent = [p.position, p.idNumber].filter(Boolean).join(' · ');
+  document.getElementById('profilPhone').textContent = currentPhone;
+  setAvatar(document.getElementById('profilAvatar'), p.name, p.photoUrl);
 }
 
 // ---- Notifikasi ----
 const notifList = document.getElementById('notifList');
 const notifEmpty = document.getElementById('notifEmpty');
 const notifDot = document.getElementById('notifDot');
-
-function fmtNotifTime(iso) {
-  return new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+function setUnreadCount(n) {
+  notifDot.classList.toggle('show', n > 0);
+  const b = document.getElementById('bellCount');
+  b.textContent = n > 9 ? '9+' : String(n);
+  b.style.display = n > 0 ? 'flex' : 'none';
 }
-
+function fmtNotifTime(iso) {
+  const d = new Date(iso);
+  const today = new Date(); const yest = new Date(); yest.setDate(yest.getDate() - 1);
+  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return 'Hari ini, ' + jam;
+  if (d.toDateString() === yest.toDateString()) return 'Kemarin, ' + jam;
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function notifTitle(n) {
+  const m = String(n.message || '');
+  if (n.type === 'lupa_absen') return 'Pengingat absen';
+  if (/kasbon/i.test(m)) return /disetujui/i.test(m) ? 'Kasbon disetujui' : (/ditolak/i.test(m) ? 'Kasbon ditolak' : 'Kasbon');
+  if (/cuti|izin/i.test(m)) return /disetujui/i.test(m) ? 'Pengajuan disetujui' : (/ditolak/i.test(m) ? 'Pengajuan ditolak' : 'Izin / Cuti');
+  if (/slip/i.test(m)) return 'Slip gaji';
+  return 'Pemberitahuan';
+}
+function notifIcon(n) {
+  const m = String(n.message || '');
+  if (/kasbon/i.test(m)) return 'i-cash';
+  if (/slip|gaji/i.test(m)) return 'i-receipt';
+  if (n.type === 'lupa_absen') return 'i-clock';
+  return 'i-calendar';
+}
 async function checkNotifDot() {
   try {
     const res = await fetch(`/api/my-notifications?phone=${encodeURIComponent(currentPhone)}`);
     const data = await res.json();
-    const anyUnread = (data.notifications || []).some((n) => !n.read);
-    notifDot.classList.toggle('show', anyUnread);
+    setUnreadCount((data.notifications || []).filter((n) => !n.read).length);
   } catch (e) { /* abaikan */ }
 }
-
 async function loadNotifications() {
   notifList.innerHTML = '';
   notifEmpty.textContent = 'Memuat...';
@@ -809,51 +715,39 @@ async function loadNotifications() {
     const res = await fetch(`/api/my-notifications?phone=${encodeURIComponent(currentPhone)}`);
     const data = await res.json();
     const notifications = data.notifications || [];
+    const unread = notifications.filter((n) => !n.read).length;
+    setUnreadCount(unread);
+    document.getElementById('notifSub').textContent = unread ? `${unread} notifikasi baru` : 'Semua sudah dibaca';
     notifEmpty.textContent = notifications.length === 0 ? 'Belum ada notifikasi.' : '';
     notifications.forEach((n) => {
       const card = document.createElement('div');
-      card.className = 'notif-card' + (n.read ? '' : ' unread');
-      card.innerHTML = `
-        <div class="notif-dot-icon ${n.read ? 'read' : ''}"></div>
-        <div>
-          <div class="notif-msg">${n.message}</div>
-          <div class="notif-time">${fmtNotifTime(n.createdAt)}</div>
-        </div>
-      `;
+      card.className = 'notif' + (n.read ? '' : ' unread');
+      card.innerHTML = `<div class="ni"><svg class="ic"><use href="#${notifIcon(n)}"/></svg></div>
+        <div><div class="t">${esc(notifTitle(n))}</div><div class="m">${esc(n.message)}</div><div class="w">${fmtNotifTime(n.createdAt)}${n.read ? '' : ' · Baru'}</div></div>`;
       notifList.appendChild(card);
     });
-    if (notifications.some((n) => !n.read)) {
-      await fetch('/api/notifications/mark-read', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: currentPhone }),
-      });
-      notifDot.classList.remove('show');
+    // Notifikasi otomatis ditandai terbaca saat halaman dibuka (yang baru tetap disorot di tampilan ini).
+    if (unread) {
+      await fetch('/api/notifications/mark-read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: currentPhone }) });
+      setUnreadCount(0);
     }
   } catch (e) {
     notifEmpty.textContent = 'Gagal memuat notifikasi: ' + e.message;
   }
 }
 
+// ---- Absen (GPS + foto) ----
 function getLocation() {
-  if (!navigator.geolocation) {
-    return Promise.reject(new Error('Perangkat tidak mendukung GPS.'));
-  }
+  if (!navigator.geolocation) return Promise.reject(new Error('Perangkat tidak mendukung GPS.'));
   const tryHighAccuracy = new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve(pos.coords),
-      (err) => reject(err),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-    );
+    navigator.geolocation.getCurrentPosition((pos) => resolve(pos.coords), (err) => reject(err), { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   });
-
   return tryHighAccuracy.catch((err) => {
-    if (err && err.code === 3 /* TIMEOUT */) {
+    if (err && err.code === 3) {
       return new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve(pos.coords),
+        navigator.geolocation.getCurrentPosition((pos) => resolve(pos.coords),
           (err2) => reject(new Error('Gagal mengambil lokasi: ' + err2.message + '. Pastikan izin lokasi aktif dan coba berdiri lebih dekat ke pintu/jendela.')),
-          { enableHighAccuracy: false, timeout: 20000, maximumAge: 5000 }
-        );
+          { enableHighAccuracy: false, timeout: 20000, maximumAge: 5000 });
       });
     }
     throw new Error('Gagal mengambil lokasi: ' + err.message + '. Pastikan izin lokasi aktif.');
@@ -863,76 +757,59 @@ function getLocation() {
 async function startAbsen(type) {
   currentType = type;
   currentShift = null;
-
-  if (type === 'keluar') {
-    photoInput.value = '';
-    photoInput.click();
-    return;
-  }
-
+  if (type === 'keluar') { photoInput.value = ''; photoInput.click(); return; }
   showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
   try {
     const coords = await getLocation();
     currentLat = coords.latitude;
     currentLng = coords.longitude;
-    const res = await fetch('/api/nearest-location', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lat: currentLat, lng: currentLng }),
-    });
+    const res = await fetch('/api/nearest-location', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat: currentLat, lng: currentLng }) });
     const data = await res.json();
     if (!res.ok) return showStatus(actionStatus, data.error || 'Gagal memuat lokasi', 'err');
-    if (!data.shifts || data.shifts.length === 0) {
-      return showStatus(actionStatus, `Lokasi terdekat (${data.name}) belum punya shift yang diatur. Hubungi admin.`, 'err');
-    }
+    if (!data.shifts || data.shifts.length === 0) return showStatus(actionStatus, `Lokasi terdekat (${data.name}) belum punya shift yang diatur. Hubungi admin.`, 'err');
+    setLocBox(data.withinRadius ? 'ok' : 'bad', 'Lokasi terdeteksi', `${data.name} · ${data.withinRadius ? 'di dalam radius' : 'di luar radius'}`);
     showShiftPicker(data.name, data.shifts);
-    actionStatus.style.display = 'none';
+    actionStatus.className = 'status';
   } catch (e) {
     showStatus(actionStatus, e.message, 'err');
   }
 }
-
-function startLembur(type) {
-  currentType = type;
-  currentShift = null;
-  photoInput.value = '';
-  photoInput.click();
-}
+function startLembur(type) { currentType = type; currentShift = null; photoInput.value = ''; photoInput.click(); }
 
 function showShiftPicker(locationName, shifts) {
-  shiftLocationName.textContent = locationName;
-  shiftOptions.innerHTML = '';
-  shifts.forEach((s) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'shift-option';
-    btn.innerHTML = `${s.name}<span class="shift-time">${s.startTime} – ${s.endTime}</span>`;
-    btn.addEventListener('click', () => {
+  document.getElementById('shiftLocationName').textContent = locationName;
+  document.getElementById('shiftDateLabel').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const box = document.getElementById('shiftOptions');
+  box.innerHTML = '';
+  currentShift = null;
+  shifts.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'radio-card' + (i === 0 ? ' active' : '');
+    el.innerHTML = `<span class="dotc"></span><div class="t">${esc(s.name)} · ${esc(s.startTime)}–${esc(s.endTime)}</div>`;
+    el.addEventListener('click', () => {
+      box.querySelectorAll('.radio-card').forEach((x) => x.classList.remove('active'));
+      el.classList.add('active');
       currentShift = s.name;
-      shiftCard.style.display = 'none';
-      bottomNav.style.display = 'flex';
-      showPage('dashboard');
-      photoInput.value = '';
-      photoInput.click();
     });
-    shiftOptions.appendChild(btn);
+    if (i === 0) currentShift = s.name;
+    box.appendChild(el);
   });
-  pages.forEach((p) => document.getElementById('page-' + p).classList.remove('active'));
-  bottomNav.style.display = 'none';
-  shiftCard.style.display = 'block';
+  shiftCard.style.display = 'flex';
 }
-
-document.getElementById('batalShift').addEventListener('click', () => {
+document.getElementById('shiftConfirm').addEventListener('click', () => {
+  if (!currentShift) return;
   shiftCard.style.display = 'none';
-  bottomNav.style.display = 'flex';
-  showPage('dashboard');
+  photoInput.value = '';
+  photoInput.click();
 });
+document.getElementById('batalShift').addEventListener('click', () => { shiftCard.style.display = 'none'; currentShift = null; });
+shiftCard.addEventListener('click', (e) => { if (e.target === shiftCard) shiftCard.style.display = 'none'; });
 
 photoInput.addEventListener('change', async () => {
   const file = photoInput.files[0];
   if (!file) return;
   preview.src = URL.createObjectURL(file);
   preview.style.display = 'block';
-
   try {
     if (currentType === 'keluar' || currentType === 'lembur_masuk' || currentType === 'lembur_keluar') {
       showStatus(actionStatus, 'Mengambil lokasi GPS...', 'warn');
@@ -940,26 +817,18 @@ photoInput.addEventListener('change', async () => {
       currentLat = coords.latitude;
       currentLng = coords.longitude;
     }
-
     showStatus(actionStatus, 'Mengirim data absen...', 'warn');
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const res = await fetch('/api/checkin', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: currentPhone,
-            type: currentType,
-            lat: currentLat,
-            lng: currentLng,
-            shift: currentShift,
-            photoBase64: reader.result,
-            deviceTime: new Date().toISOString(),
-          }),
+          body: JSON.stringify({ phone: currentPhone, type: currentType, lat: currentLat, lng: currentLng, shift: currentShift, photoBase64: reader.result, deviceTime: new Date().toISOString() }),
         });
         const data = await res.json();
         if (!res.ok) return showStatus(actionStatus, data.error || 'Gagal mengirim absen', 'err');
         showStatus(actionStatus, data.message, data.withinRadius ? 'ok' : 'warn');
+        historyMonthInput.value = new Date().toISOString().slice(0, 7);
         loadHistory();
       } catch (e) {
         showStatus(actionStatus, 'Gagal mengirim: ' + e.message, 'err');
@@ -971,17 +840,19 @@ photoInput.addEventListener('change', async () => {
   }
 });
 
-// ---- Izin/Cuti ----
+// ---- Izin / Cuti ----
 const leaveTypeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin Lainnya' };
-const leaveStatusLabel = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
-
-document.getElementById('bukaIjinCuti').addEventListener('click', () => {
-  openSubScreen('leaveCard', 'profil');
-  document.getElementById('leaveStatus').style.display = 'none';
-  loadMyLeaves();
-});
-document.getElementById('tutupLeave').addEventListener('click', () => closeSubScreen('leaveCard'));
-
+const leaveStatusInfo = { pending: ['pending', 'Menunggu'], approved: ['approved', 'Disetujui'], rejected: ['rejected', 'Ditolak'] };
+let leaveBackTo = 'profil';
+function openLeave(from) { leaveBackTo = from; showPage('izin'); document.getElementById('leaveStatus').className = 'status'; loadMyLeaves(); }
+document.getElementById('bukaIjinCuti').addEventListener('click', () => openLeave('profil'));
+document.getElementById('bukaIjinCutiDash').addEventListener('click', () => openLeave('dashboard'));
+document.getElementById('tutupLeave').addEventListener('click', () => showPage(leaveBackTo));
+document.querySelectorAll('#leaveTypeSeg button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('#leaveTypeSeg button').forEach((x) => x.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById('leaveType').value = b.dataset.type;
+}));
 document.getElementById('submitLeaveBtn').addEventListener('click', async () => {
   const leaveStatusEl = document.getElementById('leaveStatus');
   const type = document.getElementById('leaveType').value;
@@ -991,10 +862,7 @@ document.getElementById('submitLeaveBtn').addEventListener('click', async () => 
   if (!startDate || !endDate) return showStatus(leaveStatusEl, 'Tanggal mulai dan selesai wajib diisi', 'err');
   showStatus(leaveStatusEl, 'Mengirim pengajuan...', 'warn');
   try {
-    const res = await fetch('/api/leaves', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: currentPhone, type, startDate, endDate, reason }),
-    });
+    const res = await fetch('/api/leaves', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: currentPhone, type, startDate, endDate, reason }) });
     const data = await res.json();
     if (!res.ok) return showStatus(leaveStatusEl, data.error || 'Gagal mengajukan', 'err');
     showStatus(leaveStatusEl, 'Pengajuan berhasil dikirim, menunggu persetujuan admin.', 'ok');
@@ -1004,7 +872,6 @@ document.getElementById('submitLeaveBtn').addEventListener('click', async () => 
     showStatus(leaveStatusEl, 'Gagal mengirim: ' + e.message, 'err');
   }
 });
-
 async function loadMyLeaves() {
   const listEl = document.getElementById('leaveList');
   const emptyEl = document.getElementById('leaveEmpty');
@@ -1016,15 +883,10 @@ async function loadMyLeaves() {
     const leaves = data.leaves || [];
     emptyEl.textContent = leaves.length === 0 ? 'Belum ada pengajuan.' : '';
     leaves.forEach((l) => {
+      const st = leaveStatusInfo[l.status] || ['muted', l.status];
       const card = document.createElement('div');
       card.className = 'list-card';
-      card.innerHTML = `
-        <div class="lc-top">
-          <span class="lc-title">${leaveTypeLabel[l.type] || l.type}</span>
-          <span class="lc-badge ${l.status}">${leaveStatusLabel[l.status] || l.status}</span>
-        </div>
-        <div class="lc-meta">${l.startDate} s.d. ${l.endDate}${l.reason ? ' • ' + l.reason : ''}</div>
-      `;
+      card.innerHTML = `<div class="top"><div><div class="t">${esc(leaveTypeLabel[l.type] || l.type)}</div><div class="s">${rentangTgl(l.startDate, l.endDate)}${l.reason ? ' · ' + esc(l.reason) : ''}</div></div><span class="badge ${st[0]}">${esc(st[1])}</span></div>`;
       listEl.appendChild(card);
     });
   } catch (e) {
@@ -1033,66 +895,53 @@ async function loadMyLeaves() {
 }
 
 // ---- Kasbon ----
-const kasbonStatusLabel = { pending: 'Menunggu', disetujui: 'Disetujui', ditolak: 'Ditolak', lunas: 'Lunas' };
-
-document.getElementById('bukaKasbon').addEventListener('click', () => {
-  openSubScreen('kasbonCard', 'dashboard');
-  document.getElementById('kasbonStatus').style.display = 'none';
+const kasbonStatusInfo = { pending: ['pending', 'Menunggu'], disetujui: ['berjalan', 'Berjalan'], ditolak: ['ditolak', 'Ditolak'], lunas: ['lunas', 'Lunas'] };
+const kasbonJenisLabel = { cicil: 'Cicil', potlang: 'Potong langsung' };
+let kasbonBackTo = 'dashboard';
+function openKasbon(from) { kasbonBackTo = from; showPage('kasbon'); document.getElementById('kasbonStatus').className = 'status'; updateKasbonCicilVisibility(); loadMyKasbon(); }
+document.getElementById('bukaKasbon').addEventListener('click', () => openKasbon('dashboard'));
+document.getElementById('bukaKasbonProfil').addEventListener('click', () => openKasbon('profil'));
+document.getElementById('tutupKasbon').addEventListener('click', () => showPage(kasbonBackTo));
+document.querySelectorAll('.radio-card[data-jenis]').forEach((el) => el.addEventListener('click', () => {
+  document.querySelectorAll('.radio-card[data-jenis]').forEach((x) => x.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('kasbonJenis').value = el.dataset.jenis;
   updateKasbonCicilVisibility();
-  loadMyKasbon();
-});
-document.getElementById('tutupKasbon').addEventListener('click', () => closeSubScreen('kasbonCard'));
-
+}));
 function updateKasbonCicilVisibility() {
-  const isCicil = document.getElementById('kasbonJenis').value === 'cicil';
-  document.getElementById('kasbonCicilWrap').style.display = isCicil ? 'block' : 'none';
+  document.getElementById('kasbonCicilWrap').style.display = document.getElementById('kasbonJenis').value === 'cicil' ? 'block' : 'none';
   updateKasbonEstimasi();
 }
 function updateKasbonEstimasi() {
-  const estimasiEl = document.getElementById('kasbonEstimasi');
+  const el = document.getElementById('kasbonEstimasi');
   const jumlah = Number(document.getElementById('kasbonJumlah').value.replace(/[^0-9]/g, ''));
   const cicilan = Number(document.getElementById('kasbonCicilanPerBulan').value.replace(/[^0-9]/g, ''));
-  if (jumlah > 0 && cicilan > 0) {
-    const bulan = Math.ceil(jumlah / cicilan);
-    estimasiEl.style.display = 'block';
-    estimasiEl.innerHTML = `Estimasi lunas dalam <b>${bulan} bulan</b>`;
-  } else {
-    estimasiEl.style.display = 'none';
-  }
+  if (jumlah > 0 && cicilan > 0) { el.style.display = 'block'; el.innerHTML = `Estimasi lunas dalam <b>${Math.ceil(jumlah / cicilan)} bulan</b>`; }
+  else el.style.display = 'none';
 }
-document.getElementById('kasbonJenis').addEventListener('change', updateKasbonCicilVisibility);
 document.getElementById('kasbonJumlah').addEventListener('input', updateKasbonEstimasi);
 document.getElementById('kasbonCicilanPerBulan').addEventListener('input', updateKasbonEstimasi);
-
 document.getElementById('submitKasbonBtn').addEventListener('click', async () => {
-  const kasbonStatusEl = document.getElementById('kasbonStatus');
+  const st = document.getElementById('kasbonStatus');
   const jenis = document.getElementById('kasbonJenis').value;
   const jumlah = Number(document.getElementById('kasbonJumlah').value.replace(/[^0-9]/g, ''));
   const cicilanPerBulan = Number(document.getElementById('kasbonCicilanPerBulan').value.replace(/[^0-9]/g, ''));
   const catatan = document.getElementById('kasbonCatatan').value.trim();
-  if (!jumlah || jumlah <= 0) return showStatus(kasbonStatusEl, 'Jumlah pinjaman harus lebih dari 0', 'err');
-  if (jenis === 'cicil' && (!cicilanPerBulan || cicilanPerBulan <= 0)) {
-    return showStatus(kasbonStatusEl, 'Cicilan per bulan harus diisi untuk kasbon cicil', 'err');
-  }
-  showStatus(kasbonStatusEl, 'Mengirim pengajuan...', 'warn');
+  if (!jumlah || jumlah <= 0) return showStatus(st, 'Jumlah pinjaman harus lebih dari 0', 'err');
+  if (jenis === 'cicil' && (!cicilanPerBulan || cicilanPerBulan <= 0)) return showStatus(st, 'Cicilan per bulan harus diisi untuk kasbon cicil', 'err');
+  showStatus(st, 'Mengirim pengajuan...', 'warn');
   try {
-    const res = await fetch('/api/kasbon', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: currentPhone, jenis, jumlah, cicilanPerBulan: jenis === 'cicil' ? cicilanPerBulan : null, catatan }),
-    });
+    const res = await fetch('/api/kasbon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: currentPhone, jenis, jumlah, cicilanPerBulan: jenis === 'cicil' ? cicilanPerBulan : null, catatan }) });
     const data = await res.json();
-    if (!res.ok) return showStatus(kasbonStatusEl, data.error || 'Gagal mengajukan', 'err');
-    showStatus(kasbonStatusEl, 'Pengajuan kasbon berhasil dikirim, menunggu persetujuan admin.', 'ok');
-    document.getElementById('kasbonJumlah').value = '';
-    document.getElementById('kasbonCicilanPerBulan').value = '';
-    document.getElementById('kasbonCatatan').value = '';
+    if (!res.ok) return showStatus(st, data.error || 'Gagal mengajukan', 'err');
+    showStatus(st, 'Pengajuan kasbon berhasil dikirim, menunggu persetujuan admin.', 'ok');
+    ['kasbonJumlah', 'kasbonCicilanPerBulan', 'kasbonCatatan'].forEach((id) => { document.getElementById(id).value = ''; });
     document.getElementById('kasbonEstimasi').style.display = 'none';
     loadMyKasbon();
   } catch (e) {
-    showStatus(kasbonStatusEl, 'Gagal mengirim: ' + e.message, 'err');
+    showStatus(st, 'Gagal mengirim: ' + e.message, 'err');
   }
 });
-
 async function loadMyKasbon() {
   const listEl = document.getElementById('kasbonList');
   const emptyEl = document.getElementById('kasbonEmpty');
@@ -1104,15 +953,13 @@ async function loadMyKasbon() {
     const kasbon = data.kasbon || [];
     emptyEl.textContent = kasbon.length === 0 ? 'Belum ada pengajuan kasbon.' : '';
     kasbon.forEach((k) => {
+      const st = kasbonStatusInfo[k.status] || ['muted', k.status];
+      const pct = k.jumlah > 0 ? Math.min(100, Math.round(((k.jumlah - k.sisa) / k.jumlah) * 100)) : 0;
       const card = document.createElement('div');
       card.className = 'list-card';
-      card.innerHTML = `
-        <div class="lc-top">
-          <span class="lc-title">${formatRupiah(k.jumlah)} <span class="muted">(${k.jenis})</span></span>
-          <span class="lc-badge ${k.status}">${kasbonStatusLabel[k.status] || k.status}</span>
-        </div>
-        <div class="lc-meta">Sisa: ${formatRupiah(k.sisa)}${k.jenis === 'cicil' && k.cicilanPerBulan ? ` • Cicilan ${formatRupiah(k.cicilanPerBulan)}/bulan` : ''}${k.catatan ? ' • ' + k.catatan : ''}</div>
-      `;
+      card.innerHTML = `<div class="top"><div><div class="t">${esc(kasbonJenisLabel[k.jenis] || k.jenis)} · ${formatRupiah(k.jumlah)}</div>
+        <div class="s">Sisa ${formatRupiah(k.sisa)}${k.jenis === 'cicil' && k.cicilanPerBulan ? ' · cicilan ' + formatRupiah(k.cicilanPerBulan) + '/bulan' : ''}</div></div><span class="badge ${st[0]}">${esc(st[1])}</span></div>
+        ${k.status === 'disetujui' || k.status === 'lunas' ? `<div class="progress"><span style="width:${pct}%"></span></div>` : ''}`;
       listEl.appendChild(card);
     });
   } catch (e) {
