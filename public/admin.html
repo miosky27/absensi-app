@@ -1672,7 +1672,7 @@ function recentJenisBadge(r) {
 const dashRecentPaginator = makeDashPaginator('Recent', (r) => `
     <td>${personCell(r.employee, r.position || '')}</td><td>${recentJenisBadge(r)}</td><td class="strong">${esc(r.timeHHMM)}</td><td class="muted">${esc(r.nearestLocation || '—')}</td>
     <td class="m-card"><div class="rcard"><div class="rcard-top">${personCell(r.employee, [r.position, r.nearestLocation].filter(Boolean).join(' · '))}<div class="rcard-right"><div class="t">${esc(r.timeHHMM)}</div><div style="margin-top:4px">${recentJenisBadge(r)}</div></div></div></div></td>`,
-  'Belum ada data absensi.', 10, true);
+  'Belum ada absensi hari ini.', 10, true);
 const dashKasbonPaginator = makeDashPaginator('Kasbon', (k) => `
     <div><div class="nm">${esc(k.employee)}</div><div class="sb">${esc(KASBON_JENIS[k.jenis] || k.jenis)} · ${formatRupiah(k.jumlah)}</div></div>${statusBadge(KASBON_STATUS, k.status)}`,
   'Belum ada pengajuan kasbon.', 5, false);

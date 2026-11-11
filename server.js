@@ -2485,9 +2485,10 @@ const server = http.createServer(async (req, res) => {
       // "Terbaru" (Task #54): bukan cuma hari ini, tapi data PALING BARU secara
       // keseluruhan (diurutkan tanggal+jam terbaru duluan). Ambil 50 dulu, ditampilkan
       // 5 per halaman di frontend dengan tombol Sebelumnya/Selanjutnya.
-      const recentRecords = readJSON(RECORDS_FILE)
-        .sort((a, b) => (a.dateKey + a.timeHHMM < b.dateKey + b.timeHHMM ? 1 : -1))
-        .slice(0, 50)
+      // Absensi Terbaru di Dashboard hanya menampilkan absen hari ini (WIB), terbaru di atas.
+      const recentRecords = recordsToday
+        .slice()
+        .sort((a, b) => (a.timeHHMM < b.timeHHMM ? 1 : -1))
         .map((r) => ({
           employee: r.employee, position: positionByName[r.employee] || '', type: r.type,
           timeHHMM: r.timeHHMM, nearestLocation: r.nearestLocation, dateKey: r.dateKey,
