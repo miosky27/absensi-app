@@ -1185,13 +1185,15 @@ async function loadDaily() {
   tbody.innerHTML = '';
   // Jam absen yang punya foto bisa diklik untuk melihat foto record itu sendiri.
   // Tombol edit jam (pensil hijau) untuk jam yang sudah ada, "+ Isi" untuk yang kosong.
+  const tipeLabelAbsen = { masuk: 'Masuk', keluar: 'Pulang', lembur_masuk: 'Lembur Masuk', lembur_keluar: 'Lembur Pulang' };
   const editBtn = (emp, g, type) => {
     if (!emp.phone) return '';
     const r = g[type];
     if (!r && type !== 'masuk' && !g.masuk) return '';
     const attrs = `data-manualedit="${type}" data-phone="${esc(emp.phone)}" data-name="${esc(emp.name || '')}" data-recid="${r ? esc(r.id) : ''}" data-current="${r ? esc(r.timeHHMM) : ''}" data-loc="${r ? esc(r.nearestLocation || '') : ''}" data-shift="${r ? esc(r.shift || '') : ''}"`;
     return r
-      ? ` <button class="icon-btn icon-btn-edit" type="button" title="Edit jam" ${attrs} style="padding:4px;vertical-align:middle"><svg class="ic" style="width:15px;height:15px"><use href="#i-edit"/></svg></button>`
+      ? ` <button class="icon-btn icon-btn-edit" type="button" title="Edit jam" ${attrs} style="padding:4px;vertical-align:middle"><svg class="ic" style="width:15px;height:15px"><use href="#i-edit"/></svg></button>` +
+        ` <button class="icon-btn icon-btn-delete" type="button" title="Hapus absen" data-delrec="${esc(r.id)}" data-delname="${esc(emp.name || '')}" data-deltipe="${esc(tipeLabelAbsen[type] || type)}" style="padding:4px;vertical-align:middle"><svg class="ic" style="width:15px;height:15px"><use href="#i-trash"/></svg></button>`
       : ` <button class="link" type="button" ${attrs} style="margin-left:6px">+ Isi</button>`;
   };
   const jamText = (rec) => {
@@ -1225,6 +1227,7 @@ async function loadDaily() {
       <td class="m-card"><div class="rcard"><div class="rcard-top">${personCell(name, emp.position || '')}<div class="rcard-right">${mRight}</div></div>
         ${g.masuk && emp.phone ? `<div class="rcard-line" style="display:flex;gap:16px;flex-wrap:wrap">
           <button class="link" type="button" data-manualedit="masuk" data-phone="${esc(emp.phone)}" data-name="${esc(name)}" data-recid="${esc(g.masuk.id)}" data-current="${esc(g.masuk.timeHHMM)}" data-loc="${esc(g.masuk.nearestLocation || '')}" data-shift="${esc(g.masuk.shift || '')}">Edit masuk</button>
+          <button class="link" type="button" style="color:#c5221f" data-delrec="${esc(g.masuk.id)}" data-delname="${esc(name)}" data-deltipe="Masuk">Hapus masuk</button>
           <button class="link" type="button" data-manualedit="keluar" data-phone="${esc(emp.phone)}" data-recid="${g.keluar ? esc(g.keluar.id) : ''}" data-current="${g.keluar ? esc(g.keluar.timeHHMM) : ''}">${g.keluar ? 'Edit pulang' : '+ Isi pulang'}</button>
         </div>` : ''}</div></td>
     `;
@@ -1253,6 +1256,15 @@ async function loadDaily() {
         ? await fetch(`/api/records/${recId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ timeHHMM }) })
         : await fetch('/api/records/manual', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ phone, type, dateKey: date, timeHHMM }) });
       if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menyimpan jam absen.'); return; }
+      loadDaily();
+    });
+  });
+  tbody.querySelectorAll('[data-delrec]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const who = btn.dataset.delname || 'karyawan';
+      if (!confirm(`Hapus data absen ${btn.dataset.deltipe} milik ${who}? Tindakan ini tidak bisa dibatalkan.`)) return;
+      const res = await fetch(`/api/records/${btn.dataset.delrec}`, { method: 'DELETE', headers: authHeaders() });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menghapus data absen.'); return; }
       loadDaily();
     });
   });
