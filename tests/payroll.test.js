@@ -242,3 +242,50 @@ test('pengingat lupa absen muncul sekali di notifikasi karyawan', async (t) => {
   assert.ok(first.some((n) => n.message.includes('lupa absen pulang') && n.message.includes('16:00')));
   assert.ok(first.some((n) => n.message.includes('lupa absen masuk') && n.message.includes('08:00')));
 });
+
+test('tunjangan natura otomatis 10% dari gaji pokok', async (t) => {
+  const s = await startServer();
+  t.after(s.stop);
+  s.addEmployee('Gita', '0817', '2025-01-01'); // gaji pokok 3.000.000, natura di data = 0
+  s.write('records.json', []);
+  const { p } = await s.payrollOf('Gita');
+  assert.equal(p.tunjanganNatura, 300000);
+});
+
+test('pilihan Dapat Tunjangan Natura dan Dapat Kerajinan per karyawan', async (t) => {
+  const s = await startServer();
+  t.after(s.stop);
+  s.addEmployee('Hadi', '0818', '2025-01-01');
+  s.addEmployee('Ira', '0819', '2025-01-01');
+  const c = s.read('config.json');
+  const ira = c.employees.find((e) => e.name === 'Ira');
+  ira.dapatTunjanganNatura = false;
+  ira.dapatKerajinan = false;
+  s.write('config.json', c);
+  // Hadir penuh tepat waktu supaya memenuhi syarat kerajinan.
+  const recs = [];
+  daysBetween(FROM, TO).forEach((dk) => ['Hadi', 'Ira'].forEach((n) => {
+    recs.push(rec(n, 'masuk', dk, '08:00'), rec(n, 'keluar', dk, '16:00'));
+  }));
+  s.write('records.json', recs);
+  const hadi = (await s.payrollOf('Hadi')).p;
+  const irap = (await s.payrollOf('Ira')).p;
+  assert.equal(hadi.tunjanganNatura, 300000);
+  assert.equal(hadi.kerajinanEligible, true);
+  assert.equal(hadi.kerajinan, Math.round(hadi.totalPendapatan * 0.1), 'kerajinan 10% dari total pendapatan');
+  assert.equal(irap.tunjanganNatura, 0, 'tidak dicentang -> tanpa natura');
+  assert.equal(irap.kerajinan, 0, 'tidak dicentang -> tanpa kerajinan');
+});
+
+test('export karyawan berupa Excel dan file itu bisa diimport lagi', async (t) => {
+  const s = await startServer();
+  t.after(s.stop);
+  s.addEmployee('Joko', '0820', '2025-01-01');
+  const res = await fetch(s.base + '/api/employees/export', { headers: s.auth });
+  assert.match(res.headers.get('content-disposition'), /data-karyawan\.xlsx/);
+  const buf = Buffer.from(await res.arrayBuffer());
+  assert.equal(buf.readUInt32LE(0), 0x04034b50, 'file .xlsx (zip)');
+  const imp = await s.send('POST', '/api/employees/import', { xlsxBase64: buf.toString('base64') });
+  assert.equal(imp.status, 200);
+  assert.equal(imp.body.updated, 1);
+});

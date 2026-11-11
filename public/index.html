@@ -480,7 +480,7 @@ async function loadPayslip() {
       [`Uang Makan · ${s.hariHadir} hari`, s.uangMakan],
       [`Uang Transport · ${s.hariHadir} hari`, s.uangTransport],
       [`Lembur · ${lemburJam} jam`, lemburRp],
-      [s.kerajinanEligible ? 'Kerajinan' : 'Kerajinan (tidak memenuhi syarat)', s.kerajinan],
+      [s.kerajinanEligible || s.dapatKerajinan === false ? 'Kerajinan' : 'Kerajinan (tidak memenuhi syarat)', s.kerajinan],
     ];
     const potongan = [
       [`Tidak masuk · ${s.offBerlebih} hari`, s.potonganOff],

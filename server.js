@@ -7,6 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const ROOT = __dirname;
 const DATA_DIR = process.env.DATA_DIR
@@ -118,6 +119,8 @@ function migrateConfig(config) {
     if (emp.tunjanganFungsional === undefined) { emp.tunjanganFungsional = 0; changed = true; }
     if (emp.tunjanganNatura === undefined) { emp.tunjanganNatura = 0; changed = true; }
     if (emp.dapatUangMakan === undefined) { emp.dapatUangMakan = true; changed = true; }
+    if (emp.dapatTunjanganNatura === undefined) { emp.dapatTunjanganNatura = true; changed = true; }
+    if (emp.dapatKerajinan === undefined) { emp.dapatKerajinan = true; changed = true; }
     if (emp.email === undefined) { emp.email = ''; changed = true; }
     if (emp.tanggalMasuk === undefined) { emp.tanggalMasuk = ''; changed = true; }
     if (emp.status === undefined) { emp.status = 'aktif'; changed = true; }
@@ -148,6 +151,73 @@ function migrateConfig(config) {
 
 // ---------- Parser CSV sederhana (tanpa dependensi eksternal) ----------
 // Mendukung koma sebagai pemisah dan tanda kutip ganda untuk teks yang mengandung koma.
+// Baca sheet pertama file Excel (.xlsx) jadi array baris (tanpa library). File .xlsx itu zip
+// berisi XML: ambil xl/sharedStrings.xml (teks) + sheet pertama, lalu susun sel per kolom.
+function unzipEntries(buf) {
+  const files = {};
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) throw new Error('Bukan file Excel (.xlsx) yang valid');
+  const count = buf.readUInt16LE(eocd + 10);
+  let ptr = buf.readUInt32LE(eocd + 16);
+  for (let n = 0; n < count; n++) {
+    if (buf.readUInt32LE(ptr) !== 0x02014b50) break;
+    const method = buf.readUInt16LE(ptr + 10);
+    const compSize = buf.readUInt32LE(ptr + 20);
+    const nameLen = buf.readUInt16LE(ptr + 28);
+    const extraLen = buf.readUInt16LE(ptr + 30);
+    const commentLen = buf.readUInt16LE(ptr + 32);
+    const localOff = buf.readUInt32LE(ptr + 42);
+    const name = buf.slice(ptr + 46, ptr + 46 + nameLen).toString('utf8');
+    const lNameLen = buf.readUInt16LE(localOff + 26);
+    const lExtraLen = buf.readUInt16LE(localOff + 28);
+    const dataStart = localOff + 30 + lNameLen + lExtraLen;
+    const raw = buf.slice(dataStart, dataStart + compSize);
+    files[name] = method === 8 ? zlib.inflateRawSync(raw) : raw;
+    ptr += 46 + nameLen + extraLen + commentLen;
+  }
+  return files;
+}
+function xmlDecode(t) {
+  return String(t).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d))).replace(/&amp;/g, '&');
+}
+function parseXlsxRows(buf) {
+  const files = unzipEntries(buf);
+  const shared = [];
+  if (files['xl/sharedStrings.xml']) {
+    const xml = files['xl/sharedStrings.xml'].toString('utf8');
+    for (const m of xml.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
+      shared.push(xmlDecode([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((x) => x[1]).join('')));
+    }
+  }
+  const sheetName = Object.keys(files).filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0];
+  if (!sheetName) throw new Error('Sheet tidak ditemukan di file Excel');
+  const xml = files[sheetName].toString('utf8');
+  const rows = [];
+  for (const rm of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+    const row = [];
+    for (const cm of rm[1].matchAll(/<c([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const attrs = cm[1];
+      const ref = (attrs.match(/r="([A-Z]+)\d+"/) || [])[1];
+      const type = (attrs.match(/t="([^"]+)"/) || [])[1];
+      const inner = cm[2] || '';
+      let val = '';
+      if (type === 's') val = shared[Number((inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1])] || '';
+      else if (type === 'inlineStr') val = xmlDecode([...inner.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((x) => x[1]).join(''));
+      else val = xmlDecode((inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1] || '');
+      let col = row.length;
+      if (ref) { col = 0; for (const ch of ref) col = col * 26 + (ch.charCodeAt(0) - 64); col -= 1; }
+      while (row.length < col) row.push('');
+      row[col] = val;
+    }
+    if (row.some((v) => String(v).trim() !== '')) rows.push(row);
+  }
+  return rows;
+}
+
 function parseCSV(text) {
   const rows = [];
   let row = [];
@@ -531,7 +601,9 @@ function computePayrollSummary(records, config, from, to) {
     const emp = empByName[e.employee] || {};
     const gajiPokok = Number(emp.gajiPokok) || 0;
     const tunjanganFungsional = Number(emp.tunjanganFungsional) || 0;
-    const tunjanganNatura = Number(emp.tunjanganNatura) || 0;
+    // Tunjangan natura otomatis 10% dari gaji pokok, hanya untuk karyawan yang dicentang
+    // "Dapat Tunjangan Natura" (sama seperti pilihan uang makan).
+    const tunjanganNatura = emp.dapatTunjanganNatura !== false ? Math.round(gajiPokok * 0.1) : 0;
     const gajiHarian = gajiPokok / 30;
     const upahJam = Number(emp.upahLemburPerJam) > 0 ? Number(emp.upahLemburPerJam) : gajiPokok / 240;
 
@@ -583,7 +655,10 @@ function computePayrollSummary(records, config, from, to) {
     const lemburTambahanRp = Math.round(lemburTambahanJam * upahJam);
     const totalPendapatan = gajiPokok + tunjanganFungsional + tunjanganNatura + uangMakan + lemburAwalRp + lemburAkhirRp + lemburTambahanRp;
 
-    const kerajinanEligible = offBerlebih === 0 && e.terlambatKali <= (config.maksTerlambatUntukKerajinan ?? 2);
+    // Kerajinan = 10% dari total pendapatan, hanya untuk karyawan yang dicentang "Dapat Kerajinan"
+    // dan memenuhi syarat (tidak ada OFF berlebih, terlambat tidak lewat batas).
+    const dapatKerajinan = emp.dapatKerajinan !== false;
+    const kerajinanEligible = dapatKerajinan && offBerlebih === 0 && e.terlambatKali <= (config.maksTerlambatUntukKerajinan ?? 2);
     const kerajinan = kerajinanEligible ? Math.round(totalPendapatan * 0.1) : 0;
 
     const potonganOff = Math.round(chargedAbsentDates.reduce((sum, dk) => {
@@ -598,7 +673,7 @@ function computePayrollSummary(records, config, from, to) {
 
     return {
       employee: e.employee,
-      gajiPokok, tunjanganFungsional, tunjanganNatura, upahPerJam: Math.round(upahJam),
+      gajiPokok, tunjanganFungsional, tunjanganNatura, upahPerJam: Math.round(upahJam), dapatKerajinan,
       hariHadir: e.hariHadir, hariCuti, hariTidakHadir, offBerlebih,
       hariSakit: sakitDisetujui[e.employee] || 0, hariIzin: izinDisetujui[e.employee] || 0,
       hariCutiSaja: cutiSajaDisetujui[e.employee] || 0, lupaAbsenHari: e.lupaAbsenHari,
@@ -2030,11 +2105,21 @@ const server = http.createServer(async (req, res) => {
     if (pathName === '/api/employees/import' && req.method === 'POST') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const body = JSON.parse((await readBody(req)).toString('utf8'));
-      const csvText = body.csv;
-      if (!csvText || typeof csvText !== 'string') return sendJSON(res, 400, { error: 'File CSV kosong atau tidak valid' });
-
-      const rows = parseCSV(csvText);
-      if (rows.length < 2) return sendJSON(res, 400, { error: 'File CSV tidak punya data (minimal 1 baris header + 1 baris data)' });
+      // Bisa file Excel (.xlsx, dikirim base64) atau CSV (teks).
+      let rows;
+      if (body.xlsxBase64) {
+        try {
+          rows = parseXlsxRows(Buffer.from(String(body.xlsxBase64).replace(/^data:[^,]*,/, ''), 'base64'));
+        } catch (e) {
+          return sendJSON(res, 400, { error: 'File Excel tidak bisa dibaca: ' + e.message });
+        }
+      } else {
+        const csvText = body.csv;
+        if (!csvText || typeof csvText !== 'string') return sendJSON(res, 400, { error: 'File kosong atau tidak valid' });
+        rows = parseCSV(csvText);
+      }
+      rows = rows.map((r) => r.map((v) => String(v ?? '')));
+      if (rows.length < 2) return sendJSON(res, 400, { error: 'File tidak punya data (minimal 1 baris header + 1 baris data)' });
 
       const header = rows[0].map((h) => String(h).trim().toLowerCase());
       const findCol = (...names) => header.findIndex((h) => names.includes(h));
@@ -2044,7 +2129,7 @@ const server = http.createServer(async (req, res) => {
       const colPos = findCol('jabatan', 'posisi', 'position');
 
       if (colName === -1 || colPhone === -1) {
-        return sendJSON(res, 400, { error: 'Kolom "Nama" dan "No Telepon" wajib ada di file CSV.' });
+        return sendJSON(res, 400, { error: 'Kolom "Nama" dan "No Telepon" wajib ada di file.' });
       }
 
       const fresh = migrateConfig(readJSON(CONFIG_FILE));
@@ -2053,7 +2138,9 @@ const server = http.createServer(async (req, res) => {
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
         const name = (r[colName] || '').trim();
-        const phone = (r[colPhone] || '').trim();
+        let phone = (r[colPhone] || '').trim();
+        // Excel sering menyimpan nomor HP sebagai angka sehingga angka 0 di depan hilang (812... -> 0812...).
+        if (/^8\d{7,}$/.test(phone)) phone = '0' + phone;
         const idNumber = colId !== -1 ? (r[colId] || '').trim() : '';
         const position = colPos !== -1 ? (r[colPos] || '').trim() : '';
         if (!name || !phone) { errors.push(`Baris ${i + 1}: nama/no telepon kosong, dilewati`); continue; }
@@ -2077,23 +2164,21 @@ const server = http.createServer(async (req, res) => {
     if (pathName === '/api/employees/export' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const cols = ['Nama', 'No Telepon', 'No ID', 'Jabatan', 'Email', 'Tanggal Masuk', 'Status', 'Gaji Pokok', 'Upah Lembur Per Jam'];
-      const esc = (v) => {
-        const s = String(v === undefined || v === null ? '' : v);
-        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-      };
-      const lines = [cols.map(esc).join(',')];
+      // Export data karyawan dalam format Excel (.xlsx).
+      const rows = [cols];
       for (const e of config.employees) {
-        lines.push([
+        rows.push([
           e.name, e.phone, e.idNumber || '', e.position || '', e.email || '',
-          e.tanggalMasuk || '', e.status || 'aktif', e.gajiPokok || 0, e.upahLemburPerJam || 0,
-        ].map(esc).join(','));
+          e.tanggalMasuk || '', e.status || 'aktif', Number(e.gajiPokok) || 0, Number(e.upahLemburPerJam) || 0,
+        ]);
       }
-      const csv = '﻿' + lines.join('\r\n'); // BOM biar Excel baca UTF-8 dengan benar
+      const xlsxBuffer = buildXlsx([{ name: 'Data Karyawan', rows }]);
       res.writeHead(200, {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': 'attachment; filename="data-karyawan.csv"',
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="data-karyawan.xlsx"',
+        'Content-Length': xlsxBuffer.length,
       });
-      return res.end(csv);
+      return res.end(xlsxBuffer);
     }
 
     // ---- Izin/Cuti ----

@@ -474,12 +474,12 @@
         <div class="page-head">
           <div><h2 class="page-title">Karyawan</h2><div class="page-sub" id="empSubtitle"></div></div>
           <div class="page-head-actions">
-            <button class="btn secondary hide-m" type="button" id="importCsvBtn" title="Kolom file: Nama, No Telepon, No ID, Jabatan (urutan bebas). Karyawan dengan nomor telepon yang sudah ada akan diperbarui."><svg class="ic"><use href="#i-upload"/></svg>Import CSV</button>
+            <button class="btn secondary hide-m" type="button" id="importCsvBtn" title="File Excel (.xlsx) atau CSV dengan kolom: Nama, No Telepon, No ID, Jabatan (urutan bebas). Karyawan dengan nomor telepon yang sudah ada akan diperbarui."><svg class="ic"><use href="#i-upload"/></svg>Import</button>
             <button class="btn secondary hide-m" type="button" id="exportCsvBtn"><svg class="ic"><use href="#i-download"/></svg>Export</button>
             <button class="btn" type="button" id="addEmpBtn"><svg class="ic"><use href="#i-plus"/></svg><span class="desk-only">Tambah Karyawan</span><span class="mob-only">Tambah</span></button>
           </div>
         </div>
-        <input type="file" accept=".csv,text/csv" style="display:none" id="importCsvInput" />
+        <input type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" style="display:none" id="importCsvInput" />
         <div id="importCsvStatus" style="font-size:12px;margin:-10px 0 12px"></div>
         <div class="search-box mob-only" style="margin-bottom:12px"><svg class="ic"><use href="#i-search"/></svg><input type="text" id="empSearchInputM" placeholder="Cari nama, ID, atau jabatan" /></div>
         <div class="card flat-m">
@@ -676,9 +676,8 @@
                 </select>
               </div>
               <div class="field"><label>Format</label>
-                <select id="exportFormat">
+                <select id="exportFormat" disabled>
                   <option value="xlsx">Excel (.xlsx)</option>
-                  <option value="csv">CSV</option>
                 </select>
               </div>
             </div>
@@ -803,8 +802,12 @@
         <div class="field"><label>Gaji Pokok (Rp)</label><input type="number" id="empFGajiPokok" /></div>
         <div class="field"><label>Upah Lembur/Jam (Rp)</label><input type="number" id="empFUpahLembur" placeholder="Kosongkan = Gaji Pokok ÷ 240" /></div>
         <div class="field"><label>Tunjangan Fungsional (Rp)</label><input type="number" id="empFTunjanganFungsional" /></div>
-        <div class="field"><label>Tunjangan Natura (Rp)</label><input type="number" id="empFTunjanganNatura" /></div>
-        <label style="display:flex;align-items:center;gap:10px;grid-column:1 / -1;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" id="empFDapatUangMakan" />Dapat Uang Makan</label>
+        <div class="field"><label>Tunjangan Natura (otomatis 10% gaji pokok)</label><input type="number" id="empFTunjanganNatura" readonly tabindex="-1" style="background:#f6f1eb;color:var(--muted)" /></div>
+        <div style="display:flex;gap:28px;flex-wrap:wrap;grid-column:1 / -1">
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" id="empFDapatUangMakan" />Dapat Uang Makan</label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" id="empFDapatNatura" />Dapat Tunjangan Natura</label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" id="empFDapatKerajinan" />Dapat Kerajinan</label>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -2316,6 +2319,14 @@ function renderEmpList() {
 }
 
 // ---- Modal Tambah/Edit Karyawan ----
+// Tunjangan natura otomatis 10% dari gaji pokok, ikut berubah saat gaji pokok diketik.
+function updateNaturaOtomatis() {
+  const gp = Number(document.getElementById('empFGajiPokok').value) || 0;
+  const dapat = document.getElementById('empFDapatNatura').checked;
+  document.getElementById('empFTunjanganNatura').value = dapat ? Math.round(gp * 0.1) : 0;
+}
+document.getElementById('empFGajiPokok').addEventListener('input', updateNaturaOtomatis);
+document.getElementById('empFDapatNatura').addEventListener('change', updateNaturaOtomatis);
 let empModalIndex = null; // null = tambah karyawan baru
 
 function openEmpModal(idx) {
@@ -2339,7 +2350,9 @@ function openEmpModal(idx) {
   document.getElementById('empFGajiPokok').value = emp.gajiPokok || '';
   document.getElementById('empFUpahLembur').value = emp.upahLemburPerJam || '';
   document.getElementById('empFTunjanganFungsional').value = emp.tunjanganFungsional || '';
-  document.getElementById('empFTunjanganNatura').value = emp.tunjanganNatura || '';
+  document.getElementById('empFDapatNatura').checked = emp.dapatTunjanganNatura !== false;
+  document.getElementById('empFDapatKerajinan').checked = emp.dapatKerajinan !== false;
+  updateNaturaOtomatis();
   document.getElementById('empFStatus').value = emp.status || 'aktif';
   document.getElementById('empFDapatUangMakan').checked = emp.dapatUangMakan !== false;
   const photoEl = document.getElementById('empModalPhoto');
@@ -2377,6 +2390,8 @@ document.getElementById('empModalSaveBtn').addEventListener('click', async () =>
     gajiPokok: Number(document.getElementById('empFGajiPokok').value) || 0,
     upahLemburPerJam: Number(document.getElementById('empFUpahLembur').value) || 0,
     tunjanganFungsional: Number(document.getElementById('empFTunjanganFungsional').value) || 0,
+    dapatTunjanganNatura: document.getElementById('empFDapatNatura').checked,
+    dapatKerajinan: document.getElementById('empFDapatKerajinan').checked,
     tunjanganNatura: Number(document.getElementById('empFTunjanganNatura').value) || 0,
     status: document.getElementById('empFStatus').value,
     dapatUangMakan: document.getElementById('empFDapatUangMakan').checked,
@@ -2449,7 +2464,7 @@ document.getElementById('exportCsvBtn').addEventListener('click', async () => {
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'data-karyawan.csv';
+  a.href = url; a.download = 'data-karyawan.xlsx';
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 });
@@ -2465,10 +2480,17 @@ document.getElementById('importCsvInput').addEventListener('change', async () =>
   statusEl.style.color = '#888';
   statusEl.textContent = 'Mengimpor...';
   try {
-    const csvText = await file.text();
+    // File Excel dikirim sebagai base64, file CSV sebagai teks.
+    let payload;
+    if (/\.xlsx$/i.test(file.name)) {
+      const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file); });
+      payload = { xlsxBase64: dataUrl };
+    } else {
+      payload = { csv: await file.text() };
+    }
     const res = await fetch('/api/employees/import', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ csv: csvText }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!res.ok) {
