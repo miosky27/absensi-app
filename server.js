@@ -192,29 +192,24 @@ function timeToMinutes(hhmm) {
 // Mengelompokkan records per (karyawan, tanggal), ambil jam masuk paling awal
 // dan jam keluar paling akhir, lalu hitung lembur = (pulang - masuk) - 8 jam.
 // Mengembalikan Map: "nama|tanggal" -> menit lembur (0 jika tidak lembur atau data tidak lengkap).
-function computeLemburByEmployeeDate(records) {
-  const grouped = {}; // key: employee|date -> { masuk: minMenit, keluar: maxMenit }
-  for (const r of records) {
-    const key = r.employee + '|' + r.dateKey;
-    if (!grouped[key]) grouped[key] = { masuk: null, keluar: null };
-    const menit = timeToMinutes(r.timeHHMM);
-    if (r.type === 'masuk') {
-      if (grouped[key].masuk === null || menit < grouped[key].masuk) grouped[key].masuk = menit;
-    } else if (r.type === 'keluar') {
-      if (grouped[key].keluar === null || menit > grouped[key].keluar) grouped[key].keluar = menit;
-    }
-  }
+// Lembur per karyawan per tanggal, dihitung SAMA dengan slip gaji: lembur awal & akhir
+// dibandingkan jadwal shift yang dipilih, plus lembur tambahan (tombol Lembur Masuk/Pulang).
+// Hasil per key "employee|date" = { awal, akhir, tambahan } dalam menit; jam ditampilkan lewat
+// totalLemburJam() supaya pembulatan bertingkatnya identik dengan slip gaji.
+function computeLemburByEmployeeDate(records, config) {
+  const daily = computePayrollDailyByEmployeeDate(records, (config && config.toleransiTerlambatMenit) || 0, config);
+  const tambahan = computeLemburTambahanByEmployeeDate(records);
   const result = {};
-  for (const key of Object.keys(grouped)) {
-    const { masuk, keluar } = grouped[key];
-    if (masuk === null || keluar === null || keluar <= masuk) {
-      result[key] = 0;
-      continue;
-    }
-    result[key] = Math.max(0, keluar - masuk - JAM_KERJA_STANDAR_MENIT);
+  for (const k of Object.keys(daily)) result[k] = { awal: daily[k].lemburAwalMenit, akhir: daily[k].lemburAkhirMenit, tambahan: 0 };
+  for (const k of Object.keys(tambahan)) {
+    if (!result[k]) result[k] = { awal: 0, akhir: 0, tambahan: 0 };
+    result[k].tambahan += tambahan[k];
   }
   return result;
 }
+function emptyLemburParts() { return { awal: 0, akhir: 0, tambahan: 0 }; }
+function addLemburParts(acc, p) { acc.awal += p.awal; acc.akhir += p.akhir; acc.tambahan += p.tambahan; return acc; }
+function totalLemburJam(p) { return roundJamBertingkat(p.awal) + roundJamBertingkat(p.akhir) + roundJamBertingkat(p.tambahan); }
 
 // Lembur eksplisit (tombol "Lembur Masuk"/"Lembur Pulang"): di luar jadwal shift, tanpa
 // potongan jam kerja standar — seluruh durasi antara Lembur Masuk dan Lembur Pulang dihitung
@@ -250,7 +245,7 @@ function computePayrollDailyByEmployeeDate(records, toleransiMenit, config) {
   const grouped = {}; // key: employee|date -> { masuk, keluar, shiftStart, shiftEnd }
   for (const r of records) {
     const key = r.employee + '|' + r.dateKey;
-    if (!grouped[key]) grouped[key] = { masuk: null, keluar: null, shiftStart: null, shiftEnd: null };
+    if (!grouped[key]) grouped[key] = { masuk: null, keluar: null, shiftStart: null, shiftEnd: null, keluarLoc: null };
     const g = grouped[key];
     if (r.type === 'masuk') {
       g.masuk = timeToMinutes(r.timeHHMM);
@@ -258,6 +253,7 @@ function computePayrollDailyByEmployeeDate(records, toleransiMenit, config) {
       if (r.shiftEnd) g.shiftEnd = timeToMinutes(r.shiftEnd);
     } else if (r.type === 'keluar') {
       g.keluar = timeToMinutes(r.timeHHMM);
+      g.keluarLoc = r.nearestLocation || null;
     }
   }
   // Fallback jadwal shift standar (08:00 + 8 jam kerja) dipakai kalau record tidak punya
@@ -269,9 +265,23 @@ function computePayrollDailyByEmployeeDate(records, toleransiMenit, config) {
   const result = {};
   for (const key of Object.keys(grouped)) {
     const g = grouped[key];
+    // Lupa absen masuk (cuma ada absen pulang): absen pulang tidak menyimpan shift, jadi shift
+    // ditebak dari lokasi absen pulang -- shift di lokasi itu yang jam pulangnya paling dekat.
+    if (g.masuk === null && g.keluar !== null && g.shiftStart === null) {
+      const inferred = inferShiftFromKeluar(g.keluarLoc, g.keluar, config);
+      if (inferred) { g.shiftStart = inferred.start; g.shiftEnd = inferred.end; }
+    }
     const shiftStart = g.shiftStart !== null ? g.shiftStart : fallbackShiftStart;
     const shiftEnd = g.shiftEnd !== null ? g.shiftEnd : fallbackShiftEnd;
-    const out = { lemburAwalMenit: 0, terlambatMenit: 0, lemburAkhirMenit: 0, pulangCepatMenit: 0, hadir: g.masuk !== null };
+    // Aturan alpa: karyawan dianggap HADIR kalau ada absen masuk ATAU absen pulang. Kalau cuma
+    // salah satu, itu "lupa absen": hadir penuh tanpa potongan, jam yang kosong dianggap sama
+    // dengan jadwal shift (jadi tidak menimbulkan lembur, terlambat, atau pulang cepat).
+    const out = {
+      lemburAwalMenit: 0, terlambatMenit: 0, lemburAkhirMenit: 0, pulangCepatMenit: 0,
+      hadir: g.masuk !== null || g.keluar !== null,
+      lupaMasuk: g.masuk === null && g.keluar !== null,
+      lupaPulang: g.masuk !== null && g.keluar === null,
+    };
     if (g.masuk !== null) {
       if (g.masuk < shiftStart) out.lemburAwalMenit = shiftStart - g.masuk;
       else if (g.masuk > shiftStart + toleransiMenit) out.terlambatMenit = g.masuk - shiftStart;
@@ -283,6 +293,20 @@ function computePayrollDailyByEmployeeDate(records, toleransiMenit, config) {
     result[key] = out;
   }
   return result;
+}
+
+// Tebak shift untuk hari yang cuma punya absen pulang (lupa absen masuk): ambil shift di lokasi
+// absen pulang yang jam pulangnya paling dekat dengan jam absen pulang karyawan.
+function inferShiftFromKeluar(locName, keluarMenit, config) {
+  const loc = ((config && config.locations) || []).find((l) => l.name === locName);
+  if (!loc || !loc.shifts || loc.shifts.length === 0) return null;
+  let best = null;
+  for (const sh of loc.shifts) {
+    const end = timeToMinutes(sh.endTime);
+    const diff = Math.abs(end - keluarMenit);
+    if (!best || diff < best.diff) best = { diff, start: timeToMinutes(sh.startTime), end, name: sh.name, startTime: sh.startTime, endTime: sh.endTime };
+  }
+  return best;
 }
 
 // Total menit bekerja (shift biasa + lembur tambahan) per karyawan per tanggal.
@@ -442,6 +466,9 @@ function computePayrollSummary(records, config, from, to) {
   const daily = computePayrollDailyByEmployeeDate(records, toleransi, config);
   const lemburTambahan = computeLemburTambahanByEmployeeDate(records);
   const cutiDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE), from, to);
+  const sakitDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE).filter((l) => l.type === 'sakit'), from, to);
+  const izinDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE).filter((l) => l.type === 'izin'), from, to);
+  const cutiSajaDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE).filter((l) => l.type !== 'sakit' && l.type !== 'izin'), from, to);
   const kasbonPotongan = sumKasbonPaymentsByEmployee(readJSON(KASBON_PAYMENTS_FILE), from, to);
   const leaves = readJSON(LEAVES_FILE);
   // Total menit kerja per employee|tanggal, dipakai buat cek "kerja >=12 jam di H-1" (Task #36).
@@ -449,8 +476,9 @@ function computePayrollSummary(records, config, from, to) {
 
   const makeEmpty = (employee) => ({
     employee, hariHadir: 0, lemburAwalMenit: 0, terlambatMenit: 0, terlambatMenitPotongan: 0, terlambatKali: 0,
-    lemburAkhirMenit: 0, pulangCepatMenit: 0, lemburTambahanMenit: 0, presentDates: new Set(),
+    lemburAkhirMenit: 0, pulangCepatMenit: 0, lemburTambahanMenit: 0, presentDates: new Set(), lupaAbsenHari: 0,
   });
+  const todayKeyLupa = dateKeyJakarta(new Date().toISOString());
 
   const byEmployee = {};
   const empByName = {};
@@ -462,6 +490,8 @@ function computePayrollSummary(records, config, from, to) {
     const e = byEmployee[employee];
     const d = daily[key];
     if (d.hadir) { e.hariHadir += 1; e.presentDates.add(dateKey); }
+    // Lupa pulang di hari ini belum dihitung (karyawan mungkin masih bekerja).
+    if (d.lupaMasuk || (d.lupaPulang && dateKey < todayKeyLupa)) e.lupaAbsenHari += 1;
     e.lemburAwalMenit += d.lemburAwalMenit;
     e.lemburAkhirMenit += d.lemburAkhirMenit;
     e.pulangCepatMenit += d.pulangCepatMenit;
@@ -560,6 +590,8 @@ function computePayrollSummary(records, config, from, to) {
       employee: e.employee,
       gajiPokok, tunjanganFungsional, tunjanganNatura, upahPerJam: Math.round(upahJam),
       hariHadir: e.hariHadir, hariCuti, hariTidakHadir, offBerlebih,
+      hariSakit: sakitDisetujui[e.employee] || 0, hariIzin: izinDisetujui[e.employee] || 0,
+      hariCutiSaja: cutiSajaDisetujui[e.employee] || 0, lupaAbsenHari: e.lupaAbsenHari,
       terlambatKali: e.terlambatKali, terlambatJam, pulangCepatJam, lemburAwalJam, lemburAkhirJam,
       lemburTambahanJam, lemburTambahanRp,
       uangMakan, uangTransport, lemburAwalRp, lemburAkhirRp, totalPendapatan,
@@ -1005,7 +1037,7 @@ const server = http.createServer(async (req, res) => {
         .filter((r) => r.dateKey.startsWith(month))
         .sort((a, b) => (a.dateKey + a.timeHHMM < b.dateKey + b.timeHHMM ? 1 : -1)); // terbaru dulu
 
-      const lemburMap = computeLemburByEmployeeDate(records);
+      const lemburMap = computeLemburByEmployeeDate(records, config);
       const result = records.map((r) => ({
         dateKey: r.dateKey,
         timeHHMM: r.timeHHMM,
@@ -1017,7 +1049,7 @@ const server = http.createServer(async (req, res) => {
         withinRadius: r.withinRadius,
         distanceMeters: r.distanceMeters,
       }));
-      const totalLemburJam = Math.round((Object.values(lemburMap).reduce((a, b) => a + b, 0) / 60) * 10) / 10;
+      const totalLemburJamBulanIni = totalLemburJam(Object.values(lemburMap).reduce(addLemburParts, emptyLemburParts()));
 
       // Ringkasan bulan ini: hari hadir & total keterlambatan (dibandingkan jam mulai shift yang dipilih).
       const hariHadirSet = new Set();
@@ -1072,7 +1104,7 @@ const server = http.createServer(async (req, res) => {
         photoUrl: emp.photoFilename ? `/api/employee-photo/${encodeURIComponent(emp.phone)}` : null,
         month,
         records: result,
-        totalLemburJam,
+        totalLemburJam: totalLemburJamBulanIni,
         toleransiMenit: config.toleransiTerlambatMenit || 0,
         summary: {
           hariHadir: hariHadirSet.size,
@@ -1260,7 +1292,27 @@ const server = http.createServer(async (req, res) => {
       const date = url.searchParams.get('date'); // YYYY-MM-DD
       const records = readJSON(RECORDS_FILE);
       const filtered = date ? records.filter((r) => r.dateKey === date) : records;
-      return sendJSON(res, 200, { records: filtered });
+      // Lupa absen di tanggal ini: jam yang kosong diisi otomatis sesuai jadwal shift
+      // (hanya untuk ditampilkan; lupa pulang di hari ini belum dianggap lupa).
+      const lupaAbsen = {};
+      if (date) {
+        const todayKey = dateKeyJakarta(new Date().toISOString());
+        const byEmp = {};
+        for (const r of filtered) {
+          if (!byEmp[r.employee]) byEmp[r.employee] = {};
+          byEmp[r.employee][r.type] = r;
+        }
+        for (const [name, g] of Object.entries(byEmp)) {
+          if (g.masuk && !g.keluar && date < todayKey) {
+            const jam = g.masuk.shiftEnd || null;
+            if (jam) lupaAbsen[name] = { type: 'keluar', jam, shift: g.masuk.shift || '' };
+          } else if (!g.masuk && g.keluar) {
+            const sh = inferShiftFromKeluar(g.keluar.nearestLocation, timeToMinutes(g.keluar.timeHHMM), config);
+            if (sh) lupaAbsen[name] = { type: 'masuk', jam: sh.startTime, shift: sh.name };
+          }
+        }
+      }
+      return sendJSON(res, 200, { records: filtered, lupaAbsen });
     }
 
     // Admin: input manual jam absen (karyawan lupa absen masuk/pulang/lembur masuk/lembur pulang).
@@ -1369,15 +1421,15 @@ const server = http.createServer(async (req, res) => {
       const to = url.searchParams.get('to');
       if (!from || !to) return sendJSON(res, 400, { error: 'Parameter from & to (YYYY-MM-DD) wajib diisi' });
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
-      const lemburMap = computeLemburByEmployeeDate(records);
+      const lemburMap = computeLemburByEmployeeDate(records, config);
 
       const byEmployee = {};
       for (const emp of config.employees) {
-        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
       }
       for (const r of records) {
         if (!byEmployee[r.employee]) {
-          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
         }
         const e = byEmployee[r.employee];
         e.hariHadir.add(r.dateKey);
@@ -1392,7 +1444,7 @@ const server = http.createServer(async (req, res) => {
       // Jumlahkan lembur per (karyawan, tanggal) sekali saja per kombinasi.
       for (const key of Object.keys(lemburMap)) {
         const [employee] = key.split('|');
-        if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key];
+        if (byEmployee[employee]) addLemburParts(byEmployee[employee].lemburMenit, lemburMap[key]);
       }
       const summary = Object.values(byEmployee).map((e) => ({
         employee: e.employee,
@@ -1400,7 +1452,7 @@ const server = http.createServer(async (req, res) => {
         totalAbsen: e.totalAbsen,
         diLuarRadius: e.diLuarRadius,
         terlambat: e.terlambat,
-        lemburJam: Math.round((e.lemburMenit / 60) * 10) / 10,
+        lemburJam: totalLemburJam(e.lemburMenit),
       }));
       return sendJSON(res, 200, { from, to, summary, workStartTime: config.workStartTime });
     }
@@ -1460,15 +1512,15 @@ const server = http.createServer(async (req, res) => {
         filenameBase = `detail-absensi-${from}_${to}`;
       } else {
         // Ringkasan per karyawan (hari hadir, terlambat, di luar radius, lembur jam) untuk rentang tanggal.
-        const lemburMap = computeLemburByEmployeeDate(records);
+        const lemburMap = computeLemburByEmployeeDate(records, config);
         const byEmployee = {};
         for (const emp of selectedEmployees) {
-          byEmployee[emp.name] = { employee: emp.name, idNumber: emp.idNumber || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+          byEmployee[emp.name] = { employee: emp.name, idNumber: emp.idNumber || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
         }
         for (const r of records) {
           if (!byEmployee[r.employee]) {
             if (selectedPhones && !selectedNames.has(r.employee)) continue;
-            byEmployee[r.employee] = { employee: r.employee, idNumber: (empMeta[r.employee] && empMeta[r.employee].idNumber) || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+            byEmployee[r.employee] = { employee: r.employee, idNumber: (empMeta[r.employee] && empMeta[r.employee].idNumber) || '', hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
           }
           const e = byEmployee[r.employee];
           e.hariHadir.add(r.dateKey);
@@ -1479,12 +1531,12 @@ const server = http.createServer(async (req, res) => {
         }
         for (const key of Object.keys(lemburMap)) {
           const [employee] = key.split('|');
-          if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key];
+          if (byEmployee[employee]) addLemburParts(byEmployee[employee].lemburMenit, lemburMap[key]);
         }
         headerRow = ['Nama', 'No ID', 'Hari Hadir', 'Total Catatan Absen', 'Terlambat (kali)', 'Di Luar Radius', 'Lembur (jam)'];
         dataRows = Object.values(byEmployee).map((e) => [
           e.employee, e.idNumber, e.hariHadir.size, e.totalAbsen, e.terlambat, e.diLuarRadius,
-          Math.round((e.lemburMenit / 60) * 10) / 10,
+          totalLemburJam(e.lemburMenit),
         ]);
         filenameBase = `rekap-absensi-${from}_${to}`;
       }
@@ -1621,7 +1673,7 @@ const server = http.createServer(async (req, res) => {
       if (records.length === 0) {
         return sendJSON(res, 200, { date, text: `Laporan Absensi ${date}\n\nTidak ada absen tercatat pada tanggal ini.` });
       }
-      const lemburMap = computeLemburByEmployeeDate(records);
+      const lemburMap = computeLemburByEmployeeDate(records, config);
       const lines = records.map(
         (r) =>
           `- ${r.employee} | ${r.type === 'masuk' ? 'Masuk' : 'Keluar'} ${r.timeHHMM} WIB${r.shift ? ` (${r.shift})` : ''} | ${
@@ -1631,8 +1683,8 @@ const server = http.createServer(async (req, res) => {
           }`
       );
       const lemburLines = Object.entries(lemburMap)
-        .filter(([, menit]) => menit > 0)
-        .map(([key, menit]) => `- ${key.split('|')[0]}: lembur ${(menit / 60).toFixed(1)} jam`);
+        .filter(([, parts]) => totalLemburJam(parts) > 0)
+        .map(([key, parts]) => `- ${key.split('|')[0]}: lembur ${totalLemburJam(parts)} jam`);
       const lemburSection = lemburLines.length ? `\n\nLembur:\n${lemburLines.join('\n')}` : '';
       const text = `Laporan Absensi ${date}\nTotal catatan: ${records.length}\n\n${lines.join('\n')}${lemburSection}`;
       return sendJSON(res, 200, { date, text, records });
@@ -1643,15 +1695,15 @@ const server = http.createServer(async (req, res) => {
       if (key !== reportKey(config)) return sendJSON(res, 403, { error: 'Forbidden' });
       const month = url.searchParams.get('month') || dateKeyJakarta(new Date().toISOString()).slice(0, 7);
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey.startsWith(month));
-      const lemburMap = computeLemburByEmployeeDate(records);
+      const lemburMap = computeLemburByEmployeeDate(records, config);
 
       const byEmployee = {};
       for (const emp of config.employees) {
-        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
       }
       for (const r of records) {
         if (!byEmployee[r.employee]) {
-          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
         }
         const e = byEmployee[r.employee];
         e.hariHadir.add(r.dateKey);
@@ -1664,7 +1716,7 @@ const server = http.createServer(async (req, res) => {
       }
       for (const key of Object.keys(lemburMap)) {
         const [employee] = key.split('|');
-        if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key];
+        if (byEmployee[employee]) addLemburParts(byEmployee[employee].lemburMenit, lemburMap[key]);
       }
       const summary = Object.values(byEmployee).map((e) => ({
         employee: e.employee,
@@ -1672,7 +1724,7 @@ const server = http.createServer(async (req, res) => {
         totalAbsen: e.totalAbsen,
         diLuarRadius: e.diLuarRadius,
         terlambat: e.terlambat,
-        lemburJam: Math.round((e.lemburMenit / 60) * 10) / 10,
+        lemburJam: totalLemburJam(e.lemburMenit),
       }));
       const lines = summary.map(
         (s) =>
@@ -1695,14 +1747,14 @@ const server = http.createServer(async (req, res) => {
         .filter((r) => r.dateKey >= from && r.dateKey <= to)
         .sort((a, b) => (a.dateKey + a.timeHHMM).localeCompare(b.dateKey + b.timeHHMM));
 
-      const lemburMap = computeLemburByEmployeeDate(records);
+      const lemburMap = computeLemburByEmployeeDate(records, config);
       const byEmployee = {};
       for (const emp of config.employees) {
-        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+        byEmployee[emp.name] = { employee: emp.name, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
       }
       for (const r of records) {
         if (!byEmployee[r.employee]) {
-          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: 0 };
+          byEmployee[r.employee] = { employee: r.employee, hariHadir: new Set(), totalAbsen: 0, diLuarRadius: 0, terlambat: 0, lemburMenit: emptyLemburParts() };
         }
         const e = byEmployee[r.employee];
         e.hariHadir.add(r.dateKey);
@@ -1715,7 +1767,7 @@ const server = http.createServer(async (req, res) => {
       }
       for (const key2 of Object.keys(lemburMap)) {
         const [employee] = key2.split('|');
-        if (byEmployee[employee]) byEmployee[employee].lemburMenit += lemburMap[key2];
+        if (byEmployee[employee]) addLemburParts(byEmployee[employee].lemburMenit, lemburMap[key2]);
       }
       const summary = Object.values(byEmployee).map((e) => ({
         employee: e.employee,
@@ -1723,7 +1775,7 @@ const server = http.createServer(async (req, res) => {
         totalAbsen: e.totalAbsen,
         diLuarRadius: e.diLuarRadius,
         terlambat: e.terlambat,
-        lemburJam: Math.round((e.lemburMenit / 60) * 10) / 10,
+        lemburJam: totalLemburJam(e.lemburMenit),
       }));
 
       const detail = records.map((r) => ({
