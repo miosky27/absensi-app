@@ -325,6 +325,14 @@
     .mob-only { display:none !important; }
     #page-lainnya { display:none !important; }
   }
+    .jadwal-table { border-collapse:separate; border-spacing:0; font-size:12px; width:max-content; }
+    .jadwal-table th, .jadwal-table td { border:1px solid var(--line); padding:4px 6px; text-align:center; min-width:44px; background:#fff; }
+    .jadwal-table th { background:#faf6f8; font-weight:700; }
+    .jadwal-table .jd-wd { font-size:10px; color:var(--muted); font-weight:600; }
+    .jadwal-table .jd-name { position:sticky; left:0; text-align:left; min-width:170px; z-index:1; font-weight:600; }
+    .jadwal-table .jd-libur { color:#c5221f; font-weight:800; background:#fdecea; }
+    .jadwal-keterangan { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; font-size:12px; }
+    .jadwal-keterangan .sw { display:inline-block; width:14px; height:14px; border-radius:4px; vertical-align:middle; margin-right:6px; border:1px solid var(--line); }
 </style>
 
 </head>
@@ -390,6 +398,7 @@
       <div class="side-item desktop-only" data-page="ijincuti"><svg class="ic"><use href="#i-calendar"/></svg><span>Izin / Cuti</span><span class="side-badge" id="sideBadgeLeave"></span></div>
       <div class="side-item" data-page="gaji" data-mobile-order="4"><svg class="ic"><use href="#i-card"/></svg><span>Gaji</span></div>
       <div class="side-item" data-page="absensi"><svg class="ic"><use href="#i-clock"/></svg><span>Absensi</span></div>
+      <div class="side-item desktop-only" data-page="jadwal"><svg class="ic"><use href="#i-calendar"/></svg><span>Jadwal</span></div>
       <div class="side-item desktop-only" data-page="kasbon"><svg class="ic"><use href="#i-cash"/></svg><span>Kasbon</span><span class="side-badge" id="sideBadgeKasbon"></span></div>
       <div class="side-item desktop-only" data-page="setting"><svg class="ic"><use href="#i-sliders"/></svg><span>Pengaturan</span></div>
       <div class="side-item only-mobile" data-page="lainnya"><svg class="ic"><use href="#i-menu"/></svg><span>Lainnya</span></div>
@@ -725,6 +734,31 @@
       </div>
 
       <!-- ================= PENGATURAN ================= -->
+      <!-- ================= JADWAL KERJA ================= -->
+      <div id="page-jadwal" class="page" style="display:none">
+        <div class="page-head">
+          <div class="title-wrap"><button class="back-btn" type="button" data-goto="lainnya"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2 class="page-title">Jadwal Kerja</h2><div class="page-sub" id="jadwalSubtitle">Upload jadwal bulanan, lalu bagikan ke karyawan</div></div></div>
+          <div class="page-head-actions">
+            <input type="month" id="jadwalBulan" style="width:170px" title="Bulan jadwal" />
+            <input type="file" id="jadwalFile" accept=".xlsx" style="display:none" />
+            <button class="btn secondary" id="jadwalUploadBtn" type="button"><svg class="ic"><use href="#i-download"/></svg>Upload Jadwal</button>
+            <button class="btn" id="jadwalShareBtn" type="button" disabled><svg class="ic"><use href="#i-plus"/></svg>Bagikan</button>
+          </div>
+        </div>
+        <div class="card flat-m" id="jadwalStatus" style="margin-bottom:12px"></div>
+        <div class="card flat-m" id="jadwalPeringatan" style="display:none;margin-bottom:12px;border-color:#f0d49a;background:#fffaf0"></div>
+        <div class="card flat-m">
+          <div class="table-wrap" id="jadwalWrap"></div>
+          <div class="empty" id="jadwalEmpty"></div>
+        </div>
+        <div class="card flat-m" id="jadwalKeteranganCard" style="margin-top:12px;display:none">
+          <div class="card-head"><h3 class="card-title">Keterangan</h3></div>
+          <div class="jadwal-keterangan" id="jadwalKeterangan"></div>
+          <div id="jadwalCatatan" style="margin-top:10px;font-size:12px;color:#5d4e58"></div>
+        </div>
+      </div>
+
+      <!-- ================= PENGATURAN ================= -->
       <div id="page-setting" class="page" style="display:none">
         <div class="page-head">
           <div class="title-wrap"><button class="back-btn" type="button" data-goto="lainnya"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2 class="page-title">Pengaturan</h2><div class="page-sub desk-only">Lokasi, akun, dan backup data</div></div></div>
@@ -772,10 +806,22 @@
         <div class="lainnya-hero"><div class="avatar">AD</div><div><div class="strong">Admin</div><div style="font-size:12px;color:#e5d3e1">Erly's Cake &amp; Bakery</div></div></div>
         <div class="lainnya-item" data-goto="ijincuti"><span class="ic-box"><svg class="ic"><use href="#i-calendar"/></svg></span>Izin / Cuti<span class="badge pending" id="lainnyaLeaveBadge" style="display:none"></span><svg class="ic chev"><use href="#i-chev-right"/></svg></div>
         <div class="lainnya-item" data-goto="kasbon"><span class="ic-box"><svg class="ic"><use href="#i-cash"/></svg></span>Kasbon<span class="badge pending" id="lainnyaKasbonBadge" style="display:none"></span><svg class="ic chev"><use href="#i-chev-right"/></svg></div>
+        <div class="lainnya-item" data-goto="jadwal"><span class="ic-box"><svg class="ic"><use href="#i-calendar"/></svg></span>Jadwal Kerja<svg class="ic chev"><use href="#i-chev-right"/></svg></div>
         <div class="lainnya-item" data-goto="setting"><span class="ic-box"><svg class="ic"><use href="#i-sliders"/></svg></span>Pengaturan<svg class="ic chev"><use href="#i-chev-right"/></svg></div>
         <button class="btn secondary" type="button" id="logoutBtnM" style="width:100%;color:var(--red)"><svg class="ic"><use href="#i-logout"/></svg>Keluar</button>
       </div>
     </main>
+  </div>
+</div>
+
+<div id="jadwalShareOverlay" class="modal-overlay">
+  <div class="modal sm">
+    <div class="modal-head"><h3>Bagikan Jadwal</h3><button class="modal-close" type="button" id="jadwalShareClose"><svg class="ic"><use href="#i-x"/></svg></button></div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom:10px">Karyawan yang dipilih akan mendapat notifikasi jadwal baru. Jadwal sendiri sudah bisa dilihat karyawan sejak diupload.</p>
+      <div id="jadwalShareList"></div>
+    </div>
+    <div class="modal-foot"><div class="right"><span id="jadwalShareMsg" class="modal-msg"></span><button class="btn secondary" type="button" id="jadwalShareCancel">Batal</button><button class="btn" type="button" id="jadwalShareConfirm">Bagikan</button></div></div>
   </div>
 </div>
 
@@ -1011,18 +1057,159 @@ function showApp() {
   if (!window.__notifPoll) window.__notifPoll = setInterval(loadAdminNotifications, 30000);
 }
 
+// ---- Jadwal Kerja ----
+const JADWAL_NAMA_HARI = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+let jadwalState = { month: '', jadwal: null, karyawan: [] };
+function jadwalBulanIni() {
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta' }).slice(0, 7);
+}
+function jadwalFmtWaktu(iso) {
+  return iso ? new Date(iso).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' }) : '-';
+}
+function jadwalTint(hex, alpha) {
+  const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+async function loadJadwal() {
+  if (!document.getElementById('jadwalBulan').value) document.getElementById('jadwalBulan').value = jadwalBulanIni();
+  const month = document.getElementById('jadwalBulan').value;
+  jadwalState.month = month;
+  const res = await fetch('/api/jadwal?month=' + encodeURIComponent(month), { headers: authHeaders() });
+  const data = await res.json();
+  jadwalState.jadwal = data.jadwal;
+  jadwalState.karyawan = data.karyawan || [];
+  renderJadwal();
+}
+function renderJadwal() {
+  const j = jadwalState.jadwal;
+  const status = document.getElementById('jadwalStatus');
+  const shareBtn = document.getElementById('jadwalShareBtn');
+  const wrap = document.getElementById('jadwalWrap');
+  const empty = document.getElementById('jadwalEmpty');
+  const warnBox = document.getElementById('jadwalPeringatan');
+  const ketCard = document.getElementById('jadwalKeteranganCard');
+  if (!j) {
+    status.innerHTML = '<div class="strong">Belum ada jadwal untuk bulan ini</div><div class="hint" style="margin-top:4px">Klik Upload Jadwal untuk memilih file Excel.</div>';
+    shareBtn.disabled = true;
+    wrap.innerHTML = ''; empty.textContent = ''; warnBox.style.display = 'none'; ketCard.style.display = 'none';
+    return;
+  }
+  const sudahBagi = (j.sharedPhones || []).length;
+  status.innerHTML = '<div class="strong">Diupload ' + esc(jadwalFmtWaktu(j.uploadedAt)) + (j.uploadedFile ? ' · ' + esc(j.uploadedFile) : '') + '</div>'
+    + '<div class="hint" style="margin-top:4px">' + (sudahBagi
+      ? 'Dibagikan ke ' + sudahBagi + ' karyawan, terakhir ' + esc(jadwalFmtWaktu(j.sharedAt))
+      : 'Belum dibagikan. Karyawan sudah bisa melihat jadwal, tapi belum dapat notifikasi.') + '</div>';
+  shareBtn.disabled = j.rows.length === 0;
+
+  // Peringatan dari file
+  const notes = [];
+  if (j.mismatches && j.mismatches.length) {
+    const m = j.mismatches[0];
+    notes.push('Label hari di file tidak sesuai kalender pada ' + j.mismatches.length + ' tanggal (contoh: ' + esc(formatTanggalIndo(m.tanggal)) + ' tertulis ' + esc(m.labelFile) + ', seharusnya ' + esc(m.benar) + '). Aplikasi memakai kalender.');
+  }
+  (j.warnings || []).forEach((w) => notes.push(esc(w)));
+  const tanpaAkun = j.rows.filter((r) => !r.phone).map((r) => r.name);
+  if (tanpaAkun.length) notes.push('Nama berikut belum terdaftar sebagai karyawan, jadwalnya tidak tampil di aplikasi karyawan: ' + tanpaAkun.map(esc).join(', ') + '.');
+  warnBox.style.display = notes.length ? 'block' : 'none';
+  warnBox.innerHTML = notes.map((n) => '<div style="font-size:12px;margin-bottom:4px">⚠ ' + n + '</div>').join('');
+
+  // Tabel jadwal
+  const [y, mo] = jadwalState.month.split('-').map(Number);
+  const jumlahHari = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const warnaByTugas = {};
+  (j.legend || []).forEach((l) => { warnaByTugas[l.arti] = l.warna; });
+  const head = '<tr><th class="jd-name">Nama</th>' + Array.from({ length: jumlahHari }, (_, i) => {
+    const d = i + 1;
+    const wd = JADWAL_NAMA_HARI[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
+    return '<th>' + d + '<div class="jd-wd">' + wd + '</div></th>';
+  }).join('') + '</tr>';
+  const body = j.rows.map((r) => {
+    const cells = Array.from({ length: jumlahHari }, (_, i) => {
+      const key = jadwalState.month + '-' + String(i + 1).padStart(2, '0');
+      const e = r.days[key];
+      if (!e) return '<td></td>';
+      if (e.libur) return '<td class="jd-libur">X</td>';
+      const warna = e.warna || (e.tugas ? warnaByTugas[e.tugas] : null);
+      const style = warna ? ' style="background:' + jadwalTint(warna, 0.35) + '"' : '';
+      const title = [e.tugas, e.shift].filter(Boolean).join(' · ');
+      return '<td' + style + ' title="' + esc(title) + '"><b>' + esc(e.shift || e.teks || '') + '</b></td>';
+    }).join('');
+    return '<tr><td class="jd-name">' + esc(r.name) + (r.phone ? '' : ' <span class="hint">(belum terdaftar)</span>') + '</td>' + cells + '</tr>';
+  }).join('');
+  wrap.innerHTML = '<table class="jadwal-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+  empty.textContent = j.rows.length ? '' : 'Tidak ada karyawan yang terbaca dari file.';
+
+  // Keterangan dan catatan
+  ketCard.style.display = 'block';
+  const ket = [];
+  (j.legend || []).forEach((l) => ket.push('<span><span class="sw" style="background:' + jadwalTint(l.warna, 0.5) + '"></span>' + esc(l.arti) + '</span>'));
+  ket.push('<span><b>P</b> = Pagi 06:40-14:30</span>', '<span><b>FL</b> = Full 06:30-17:00</span>', '<span><b style="color:#c5221f">X</b> = Libur</span>');
+  document.getElementById('jadwalKeterangan').innerHTML = ket.join('');
+  document.getElementById('jadwalCatatan').innerHTML = (j.notes || []).map((n) => '<div>' + esc(n) + '</div>').join('');
+}
+
+document.getElementById('jadwalBulan').addEventListener('change', loadJadwal);
+document.getElementById('jadwalUploadBtn').addEventListener('click', () => document.getElementById('jadwalFile').click());
+document.getElementById('jadwalFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const month = document.getElementById('jadwalBulan').value;
+  if (!month) return alert('Pilih bulan jadwal dulu.');
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  const res = await fetch('/api/jadwal/upload', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ month, filename: file.name, base64 }) });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || 'Upload jadwal gagal.');
+  await loadJadwal();
+});
+
+function openJadwalShare() {
+  const j = jadwalState.jadwal;
+  const list = document.getElementById('jadwalShareList');
+  const sudah = new Set(j.sharedPhones || []);
+  const kandidat = j.rows.filter((r) => r.phone);
+  list.innerHTML = kandidat.length ? kandidat.map((r) => (
+    '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">'
+    + '<input type="checkbox" class="jadwal-share-cb" value="' + esc(r.phone) + '" checked />'
+    + '<span style="flex:1"><span class="strong">' + esc(r.name) + '</span>'
+    + (sudah.has(r.phone) ? ' <span class="hint">· sudah pernah dibagikan</span>' : '') + '</span></label>'
+  )).join('') : '<div class="hint">Tidak ada karyawan terdaftar di jadwal ini.</div>';
+  document.getElementById('jadwalShareMsg').textContent = '';
+  document.getElementById('jadwalShareOverlay').style.display = 'flex';
+}
+document.getElementById('jadwalShareBtn').addEventListener('click', openJadwalShare);
+document.getElementById('jadwalShareClose').addEventListener('click', () => { document.getElementById('jadwalShareOverlay').style.display = 'none'; });
+document.getElementById('jadwalShareCancel').addEventListener('click', () => { document.getElementById('jadwalShareOverlay').style.display = 'none'; });
+document.getElementById('jadwalShareConfirm').addEventListener('click', async () => {
+  const phones = [...document.querySelectorAll('.jadwal-share-cb:checked')].map((cb) => cb.value);
+  const msg = document.getElementById('jadwalShareMsg');
+  if (!phones.length) { msg.textContent = 'Pilih minimal satu karyawan.'; return; }
+  const res = await fetch('/api/jadwal/share', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ month: jadwalState.month, phones }) });
+  const data = await res.json();
+  if (!res.ok) { msg.textContent = data.error || 'Gagal membagikan.'; return; }
+  document.getElementById('jadwalShareOverlay').style.display = 'none';
+  await loadJadwal();
+  alert('Jadwal dibagikan ke ' + data.dibagikan + ' karyawan.');
+});
+
 // ---- Navigasi sidebar / bottom nav ----
-const PAGES = ['dashboard','pegawai','ijincuti','gaji','absensi','kasbon','setting','lainnya'];
+const PAGES = ['dashboard','pegawai','ijincuti','gaji','absensi','kasbon','jadwal','setting','lainnya'];
 function goPage(page) {
   document.querySelectorAll('.side-item[data-page]').forEach((t) => t.classList.toggle('active', t.dataset.page === page));
   // Halaman yang di HP ada di menu Lainnya: tandai juga item Lainnya di bottom nav.
-  if (['ijincuti', 'kasbon', 'setting'].includes(page)) document.querySelector('.side-item[data-page="lainnya"]').classList.add('active');
+  if (['ijincuti', 'kasbon', 'jadwal', 'setting'].includes(page)) document.querySelector('.side-item[data-page="lainnya"]').classList.add('active');
   PAGES.forEach((name) => { document.getElementById('page-' + name).style.display = (name === page) ? 'block' : 'none'; });
   document.body.classList.toggle('on-dashboard', page === 'dashboard');
   window.scrollTo(0, 0);
   if (page === 'dashboard') loadDashboard();
   if (page === 'ijincuti') loadLeaves();
   if (page === 'kasbon') loadKasbon();
+  if (page === 'jadwal') loadJadwal();
   if (page === 'gaji') loadGaji();
 }
 document.querySelectorAll('.side-item[data-page]').forEach((item) => {

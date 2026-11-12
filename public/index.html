@@ -88,7 +88,19 @@
   .stat .n { font-size:22px; font-weight:800; }
   .stat .n small { font-size:12px; font-weight:600; color:var(--muted); }
   .stat .l { font-size:11px; color:var(--muted); margin-top:2px; line-height:1.3; }
-  .quick { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  .quick { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+  .jd-row { display:flex; gap:12px; align-items:center; background:#fff; border:1px solid var(--line); border-radius:16px; padding:12px; margin-bottom:8px; }
+  .jd-date { width:48px; text-align:center; flex-shrink:0; }
+  .jd-date .n { font-size:20px; font-weight:800; line-height:1; }
+  .jd-date .h { font-size:11px; color:var(--muted); margin-top:3px; }
+  .jd-info { flex:1; min-width:0; }
+  .jd-info .shift { font-weight:700; font-size:13px; }
+  .jd-info .tugas { font-size:12px; color:#5d4e58; margin-top:2px; }
+  .jd-chip { display:inline-block; font-size:11px; font-weight:700; border-radius:999px; padding:3px 10px; }
+  .jd-chip.libur { background:#fdecea; color:#c5221f; }
+  .jd-chip.kerja { background:var(--plum-50); color:var(--plum); }
+  .jd-ket { font-size:12px; color:#5d4e58; margin-top:10px; line-height:1.5; }
+  .jd-ket .sw { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:middle; margin-right:6px; border:1px solid var(--line); }
   .quick button { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px 8px; font-family:inherit; font-size:13px; font-weight:600; color:var(--text); display:flex; flex-direction:column; align-items:center; gap:10px; cursor:pointer; }
   .quick .qi { width:38px; height:38px; border-radius:12px; background:var(--plum-50); color:var(--plum); display:flex; align-items:center; justify-content:center; }
 
@@ -224,6 +236,7 @@
         <button type="button" id="lihatSlipGaji"><span class="qi"><svg class="ic"><use href="#i-receipt"/></svg></span>Slip Gaji</button>
         <button type="button" id="bukaKasbon"><span class="qi"><svg class="ic"><use href="#i-cash"/></svg></span>Kasbon</button>
         <button type="button" id="bukaIjinCutiDash"><span class="qi"><svg class="ic"><use href="#i-calendar"/></svg></span>Izin / Cuti</button>
+        <button type="button" id="bukaJadwal"><span class="qi"><svg class="ic"><use href="#i-calendar"/></svg></span>Jadwal</button>
       </div>
     </div>
 
@@ -241,6 +254,14 @@
     </div>
 
     <!-- ================= NOTIFIKASI ================= -->
+    <div class="page" id="page-jadwal">
+      <div class="page-head"><button class="back-btn" type="button" id="tutupJadwal"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2>Jadwal Kerja</h2><div class="sub" id="jadwalEmpSub"></div></div></div>
+      <select id="jadwalEmpBulan" style="margin-bottom:12px"></select>
+      <div id="jadwalEmpList"></div>
+      <div class="empty" id="jadwalEmpEmpty"></div>
+      <div class="jd-ket" id="jadwalEmpKet"></div>
+    </div>
+
     <div class="page" id="page-notifikasi">
       <div class="page-head"><div><h2>Notifikasi</h2><div class="sub" id="notifSub"></div></div></div>
       <div id="notifList"></div>
@@ -391,7 +412,7 @@ function setAvatar(el, name, photoUrl) {
 }
 
 // ---- Navigasi ----
-const pages = ['dashboard', 'riwayat', 'notifikasi', 'profil', 'slip', 'izin', 'kasbon'];
+const pages = ['dashboard', 'riwayat', 'notifikasi', 'profil', 'slip', 'izin', 'kasbon', 'jadwal'];
 const navPages = ['dashboard', 'riwayat', 'notifikasi', 'profil'];
 function showPage(name) {
   pages.forEach((p) => document.getElementById('page-' + p).classList.toggle('active', p === name));
@@ -400,10 +421,14 @@ function showPage(name) {
   window.scrollTo(0, 0);
   if (name === 'riwayat') loadHistory();
   if (name === 'notifikasi') loadNotifications();
+  if (name === 'jadwal') loadJadwalKaryawan();
   if (name === 'profil') fillProfilPage();
 }
 document.querySelectorAll('.nav-item').forEach((btn) => btn.addEventListener('click', () => showPage(btn.dataset.navpage)));
 document.getElementById('dashBell').addEventListener('click', () => showPage('notifikasi'));
+document.getElementById('bukaJadwal').addEventListener('click', () => showPage('jadwal'));
+document.getElementById('tutupJadwal').addEventListener('click', () => showPage(lastPage));
+document.getElementById('jadwalEmpBulan').addEventListener('change', renderJadwalKaryawan);
 
 document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
   const phone = phoneInput.value.trim();
@@ -684,9 +709,70 @@ function fmtNotifTime(iso) {
   if (d.toDateString() === yest.toDateString()) return 'Kemarin, ' + jam;
   return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+// ---- Jadwal kerja karyawan ----
+let jadwalEmpData = null;
+async function loadJadwalKaryawan() {
+  try {
+    const res = await fetch(`/api/my-jadwal?phone=${encodeURIComponent(currentPhone)}`);
+    jadwalEmpData = await res.json();
+  } catch (e) {
+    jadwalEmpData = { bulan: [] };
+    document.getElementById('jadwalEmpEmpty').textContent = 'Gagal memuat jadwal: ' + e.message;
+  }
+  renderJadwalKaryawan();
+}
+function renderJadwalKaryawan() {
+  const sel = document.getElementById('jadwalEmpBulan');
+  const list = document.getElementById('jadwalEmpList');
+  const empty = document.getElementById('jadwalEmpEmpty');
+  const ket = document.getElementById('jadwalEmpKet');
+  const bulan = (jadwalEmpData && jadwalEmpData.bulan) || [];
+  if (!bulan.length) {
+    sel.style.display = 'none'; list.innerHTML = ''; ket.innerHTML = '';
+    document.getElementById('jadwalEmpSub').textContent = '';
+    empty.textContent = 'Belum ada jadwal kerja untuk kamu.';
+    return;
+  }
+  sel.style.display = 'block';
+  if (!sel.dataset.filled || sel.options.length !== bulan.length) {
+    sel.innerHTML = bulan.map((b) => {
+      const [y, m] = b.month.split('-').map(Number);
+      return `<option value="${b.month}">${BULAN[m - 1]} ${y}</option>`;
+    }).join('');
+    sel.dataset.filled = '1';
+  }
+  const pilih = bulan.find((b) => b.month === sel.value) || bulan[0];
+  sel.value = pilih.month;
+  document.getElementById('jadwalEmpSub').textContent = `${pilih.hari.length} hari terjadwal`;
+  empty.textContent = pilih.hari.length ? '' : 'Tidak ada jadwal untuk bulan ini.';
+  const warnaByTugas = {};
+  (pilih.legend || []).forEach((l) => { warnaByTugas[l.arti] = l.warna; });
+  list.innerHTML = pilih.hari.map((h) => {
+    const d = Number(h.tanggal.slice(8, 10));
+    const warna = h.tugas ? warnaByTugas[h.tugas] : null;
+    const bg = warna ? `background:rgba(${parseInt(warna.slice(0, 2), 16)},${parseInt(warna.slice(2, 4), 16)},${parseInt(warna.slice(4, 6), 16)},0.18)` : '';
+    const chip = h.libur
+      ? '<span class="jd-chip libur">Libur</span>'
+      : (h.shiftLabel ? `<div class="shift">${h.shift} · ${escHtml(h.shiftLabel)}</div>` : '');
+    const tugas = [h.tugas, h.teks].filter(Boolean).map(escHtml).join(' · ');
+    return `<div class="jd-row" style="${bg}"><div class="jd-date"><div class="n">${d}</div><div class="h">${h.hari.slice(0, 3)}</div></div>
+      <div class="jd-info">${h.libur ? '<span class="jd-chip libur">Libur</span>' : chip}${tugas ? `<div class="tugas">${tugas}</div>` : ''}</div></div>`;
+  }).join('');
+  const ketItems = (pilih.legend || []).map((l) => {
+    const r = parseInt(l.warna.slice(0, 2), 16), g = parseInt(l.warna.slice(2, 4), 16), b = parseInt(l.warna.slice(4, 6), 16);
+    return `<div><span class="sw" style="background:rgba(${r},${g},${b},0.5)"></span>${escHtml(l.arti)}</div>`;
+  });
+  ketItems.push('<div><b>P</b> = Pagi 06:40-14:30</div>', '<div><b>FL</b> = Full 06:30-17:00</div>', '<div><b style="color:#c5221f">X</b> = Libur</div>');
+  ket.innerHTML = ketItems.join('') + (pilih.notes || []).map((n) => `<div style="margin-top:6px">${escHtml(n)}</div>`).join('');
+}
+function escHtml(t) {
+  return String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function notifTitle(n) {
   const m = String(n.message || '');
   if (n.type === 'lupa_absen') return 'Pengingat absen';
+  if (n.type === 'jadwal') return 'Jadwal baru';
   if (/kasbon/i.test(m)) return /disetujui/i.test(m) ? 'Kasbon disetujui' : (/ditolak/i.test(m) ? 'Kasbon ditolak' : 'Kasbon');
   if (/cuti|izin/i.test(m)) return /disetujui/i.test(m) ? 'Pengajuan disetujui' : (/ditolak/i.test(m) ? 'Pengajuan ditolak' : 'Izin / Cuti');
   if (/slip/i.test(m)) return 'Slip gaji';
@@ -694,6 +780,7 @@ function notifTitle(n) {
 }
 function notifIcon(n) {
   const m = String(n.message || '');
+  if (n.type === 'jadwal') return 'i-calendar';
   if (/kasbon/i.test(m)) return 'i-cash';
   if (/slip|gaji/i.test(m)) return 'i-receipt';
   if (n.type === 'lupa_absen') return 'i-clock';
@@ -720,6 +807,7 @@ async function loadNotifications() {
     notifications.forEach((n) => {
       const card = document.createElement('div');
       card.className = 'notif' + (n.read ? '' : ' unread');
+      if (n.type === 'jadwal') { card.style.cursor = 'pointer'; card.addEventListener('click', () => showPage('jadwal')); }
       card.innerHTML = `<div class="ni"><svg class="ic"><use href="#${notifIcon(n)}"/></svg></div>
         <div><div class="t">${esc(notifTitle(n))}</div><div class="m">${esc(n.message)}</div><div class="w">${fmtNotifTime(n.createdAt)}${n.read ? '' : ' · Baru'}</div></div>`;
       notifList.appendChild(card);

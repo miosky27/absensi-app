@@ -23,6 +23,8 @@ const KASBON_FILE = path.join(DATA_DIR, 'kasbon.json'); // pinjaman karyawan
 const KASBON_PAYMENTS_FILE = path.join(DATA_DIR, 'kasbon_payments.json'); // cicilan/pelunasan kasbon
 const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'notifications.json'); // pemberitahuan untuk karyawan (status cuti/kasbon dll)
 const ADMIN_NOTIFICATIONS_FILE = path.join(DATA_DIR, 'admin_notifications.json'); // pemberitahuan untuk admin (pengajuan cuti/kasbon baru)
+const JADWAL_FILE = path.join(DATA_DIR, 'jadwal.json'); // jadwal kerja bulanan (hasil upload Excel + status bagikan)
+ensureFile(JADWAL_FILE, {});
 const PAYROLL_LOCKS_FILE = path.join(DATA_DIR, 'payroll_locks.json'); // periode gaji yang sudah dikunci + hasil hitungannya
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const FAILED_ATTEMPTS_FILE = path.join(DATA_DIR, 'failed_attempts.json'); // percobaan absen yang gagal (ditolak server atau GPS/kamera di HP) // sesi login admin (hash token + masa berlaku)
@@ -153,39 +155,8 @@ function migrateConfig(config) {
 
 // ---------- Parser CSV sederhana (tanpa dependensi eksternal) ----------
 // Mendukung koma sebagai pemisah dan tanda kutip ganda untuk teks yang mengandung koma.
-// Baca sheet pertama file Excel (.xlsx) jadi array baris (tanpa library). File .xlsx itu zip
-// berisi XML: ambil xl/sharedStrings.xml (teks) + sheet pertama, lalu susun sel per kolom.
-function unzipEntries(buf) {
-  const files = {};
-  let eocd = -1;
-  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
-  }
-  if (eocd === -1) throw new Error('Bukan file Excel (.xlsx) yang valid');
-  const count = buf.readUInt16LE(eocd + 10);
-  let ptr = buf.readUInt32LE(eocd + 16);
-  for (let n = 0; n < count; n++) {
-    if (buf.readUInt32LE(ptr) !== 0x02014b50) break;
-    const method = buf.readUInt16LE(ptr + 10);
-    const compSize = buf.readUInt32LE(ptr + 20);
-    const nameLen = buf.readUInt16LE(ptr + 28);
-    const extraLen = buf.readUInt16LE(ptr + 30);
-    const commentLen = buf.readUInt16LE(ptr + 32);
-    const localOff = buf.readUInt32LE(ptr + 42);
-    const name = buf.slice(ptr + 46, ptr + 46 + nameLen).toString('utf8');
-    const lNameLen = buf.readUInt16LE(localOff + 26);
-    const lExtraLen = buf.readUInt16LE(localOff + 28);
-    const dataStart = localOff + 30 + lNameLen + lExtraLen;
-    const raw = buf.slice(dataStart, dataStart + compSize);
-    files[name] = method === 8 ? zlib.inflateRawSync(raw) : raw;
-    ptr += 46 + nameLen + extraLen + commentLen;
-  }
-  return files;
-}
-function xmlDecode(t) {
-  return String(t).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d))).replace(/&amp;/g, '&');
-}
+const { unzipEntries, xmlDecode } = require('./lib/xlsx-read');
+const { parseJadwalXlsx, jadwalUntukKaryawan, normalizeName: normalizeNamaJadwal, WEEKDAY_NAMES } = require('./lib/jadwal');
 function parseXlsxRows(buf) {
   const files = unzipEntries(buf);
   const shared = [];
@@ -2454,6 +2425,86 @@ function reasonLabelAbsen(reason) {
       return sendJSON(res, 200, { kasbon: result });
     }
     // Riwayat notifikasi milik karyawan sendiri (status pengajuan cuti/izin & kasbon).
+    // ---- Jadwal kerja ----
+    // Admin upload file Excel jadwal bulanan. Jadwal langsung terlihat karyawan setelah diupload.
+    if (pathName === '/api/jadwal/upload' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const month = String(body.month || '');
+      if (!body.base64) return sendJSON(res, 400, { error: 'File jadwal belum dipilih' });
+      let data;
+      try { data = parseJadwalXlsx(Buffer.from(String(body.base64), 'base64'), month); }
+      catch (e) { return sendJSON(res, 400, { error: e.message }); }
+      const all = readJSON(JADWAL_FILE);
+      const prev = all[month];
+      all[month] = {
+        month,
+        uploadedAt: new Date().toISOString(),
+        uploadedFile: String(body.filename || '').slice(0, 200),
+        rows: data.rows,
+        legend: data.legend,
+        notes: data.notes,
+        mismatches: data.mismatches,
+        warnings: data.warnings,
+        sharedAt: prev ? prev.sharedAt : null,
+        sharedPhones: prev ? prev.sharedPhones : [],
+        shareHistory: prev ? prev.shareHistory : [],
+      };
+      writeJSON(JADWAL_FILE, all);
+      return sendJSON(res, 200, { ok: true, month, jumlahKaryawan: data.rows.length, legend: data.legend, notes: data.notes, mismatches: data.mismatches, warnings: data.warnings });
+    }
+
+    // Admin: lihat jadwal satu bulan + daftar karyawan (untuk memilih siapa yang dibagikan).
+    if (pathName === '/api/jadwal' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const month = String(url.searchParams.get('month') || '');
+      const data = readJSON(JADWAL_FILE)[month] || null;
+      const karyawan = config.employees.map((e) => ({ name: e.name, phone: e.phone, status: e.status || 'aktif' }));
+      const rows = data ? data.rows.map((r) => {
+        const emp = config.employees.find((e) => normalizeNamaJadwal(e.name) === normalizeNamaJadwal(r.name));
+        return { name: r.name, phone: emp ? emp.phone : null, days: r.days };
+      }) : [];
+      return sendJSON(res, 200, { month, jadwal: data ? { ...data, rows } : null, karyawan });
+    }
+
+    // Admin: bagikan jadwal ke karyawan yang dipilih. Setiap karyawan dapat notifikasi.
+    if (pathName === '/api/jadwal/share' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const month = String(body.month || '');
+      const all = readJSON(JADWAL_FILE);
+      const data = all[month];
+      if (!data) return sendJSON(res, 404, { error: 'Jadwal bulan ini belum diupload' });
+      const pilihan = Array.isArray(body.phones) ? body.phones.map((p) => String(p)) : [];
+      const terpilih = config.employees.filter((e) => pilihan.includes(String(e.phone))
+        && data.rows.some((r) => normalizeNamaJadwal(r.name) === normalizeNamaJadwal(e.name)));
+      if (terpilih.length === 0) return sendJSON(res, 400, { error: 'Pilih minimal satu karyawan yang punya jadwal di bulan ini' });
+      const [y, m] = month.split('-').map(Number);
+      const namaBulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][m - 1];
+      const at = new Date().toISOString();
+      for (const e of terpilih) {
+        addNotification(e.phone, `Jadwal kerja ${namaBulan} ${y} sudah dibagikan. Buka menu Jadwal untuk melihatnya.`, 'jadwal');
+      }
+      data.sharedAt = at;
+      data.sharedPhones = [...new Set([...(data.sharedPhones || []), ...terpilih.map((e) => e.phone)])];
+      data.shareHistory = [...(data.shareHistory || []), { at, phones: terpilih.map((e) => e.phone) }];
+      all[month] = data;
+      writeJSON(JADWAL_FILE, all);
+      return sendJSON(res, 200, { ok: true, dibagikan: terpilih.length });
+    }
+
+    // Karyawan: jadwal kerja miliknya dari semua bulan yang sudah diupload (tidak perlu menunggu dibagikan).
+    if (pathName === '/api/my-jadwal' && req.method === 'GET') {
+      const phone = String(url.searchParams.get('phone') || '').trim();
+      const emp = config.employees.find((e) => e.phone === phone);
+      if (!emp) return sendJSON(res, 200, { bulan: [] });
+      const bulan = Object.values(readJSON(JADWAL_FILE))
+        .sort((a, b) => (a.month < b.month ? 1 : -1))
+        .map((m) => ({ month: m.month, uploadedAt: m.uploadedAt, hari: jadwalUntukKaryawan(m, emp.name), legend: m.legend, notes: m.notes }))
+        .filter((m) => m.hari.length > 0);
+      return sendJSON(res, 200, { bulan, namaHari: WEEKDAY_NAMES });
+    }
+
     if (pathName === '/api/my-notifications' && req.method === 'GET') {
       const phone = String(url.searchParams.get('phone') || '').trim();
       generateLupaAbsenReminders(phone, config);
