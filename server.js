@@ -155,7 +155,7 @@ function migrateConfig(config) {
 
 // ---------- Parser CSV sederhana (tanpa dependensi eksternal) ----------
 // Mendukung koma sebagai pemisah dan tanda kutip ganda untuk teks yang mengandung koma.
-const { unzipEntries, xmlDecode } = require('./lib/xlsx-read');
+const { unzipEntries, xmlDecode, readSheetCells } = require('./lib/xlsx-read');
 const { parseJadwalXlsx, jadwalUntukKaryawan, buatTemplateJadwal, normalizeName: normalizeNamaJadwal, WEEKDAY_NAMES } = require('./lib/jadwal');
 function parseXlsxRows(buf) {
   const files = unzipEntries(buf);
@@ -1531,6 +1531,154 @@ function reasonLabelAbsen(reason) {
     }
 
     // ---- Export rekap absensi ke CSV untuk rentang tanggal bebas yang dipilih admin ----
+    // Template import data absensi (kolom sama dengan export detail, ditambah Lokasi & Shift).
+    if (pathName === '/api/records/import-template' && req.method === 'GET') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const header = ['Nama', 'No ID', 'Tanggal', 'Jam Masuk', 'Jam Pulang', 'Lembur Masuk', 'Lembur Pulang', 'Lokasi', 'Shift'];
+      const contoh = ['Nama Karyawan', '', '2026-11-01', '08:30', '16:30', '', '', 'Yogya Jatibarang', 'Shift 1'];
+      const referensi = [['Lokasi', 'Shift', 'Mulai', 'Selesai']];
+      (config.locations || []).forEach((l) => (l.shifts || []).forEach((sh) => referensi.push([l.name, sh.name, sh.startTime, sh.endTime])));
+      const xlsxBuffer = buildXlsx([
+        { name: 'Absensi', rows: [header.map((v) => ({ v, s: XLSX_STYLE.BOLD })), contoh] },
+        { name: 'Referensi Shift', rows: [referensi[0].map((v) => ({ v, s: XLSX_STYLE.BOLD })), ...referensi.slice(1)] },
+      ]);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="template-import-absensi.xlsx"',
+      });
+      return res.end(xlsxBuffer);
+    }
+
+    // Import data absensi dari Excel. simpan=false: hanya preview. Baris yang ada error dilewati seluruhnya.
+    if (pathName === '/api/records/import' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      if (!body.base64) return sendJSON(res, 400, { error: 'File belum dipilih' });
+      let cells;
+      try { cells = readSheetCells(Buffer.from(String(body.base64), 'base64')); }
+      catch (e) { return sendJSON(res, 400, { error: 'File tidak bisa dibaca. Pastikan formatnya .xlsx.' }); }
+
+      const grid = {};
+      for (const c of cells) { if (!grid[c.row]) grid[c.row] = {}; grid[c.row][c.col] = c.v; }
+      const norm = (v) => String(v === undefined || v === null ? '' : v).toLowerCase().replace(/\(.*?\)/g, '').trim();
+      const kolom = {};
+      Object.entries(grid[1] || {}).forEach(([col, v]) => { kolom[norm(v)] = Number(col); });
+      const colNama = kolom['nama'], colNoId = kolom['no id'], colTanggal = kolom['tanggal'];
+      const colMasuk = kolom['jam masuk'], colPulang = kolom['jam pulang'];
+      const colLemburMasuk = kolom['lembur masuk'], colLemburPulang = kolom['lembur pulang'];
+      const colLokasi = kolom['lokasi'], colShift = kolom['shift'];
+      if (!colNama || !colTanggal) return sendJSON(res, 400, { error: 'Kolom "Nama" dan "Tanggal" wajib ada di baris pertama.' });
+
+      const teks = (v) => (v === undefined || v === null ? '' : String(v).trim());
+      const normNama = (v) => teks(v).toLowerCase().replace(/\s+/g, ' ');
+      const tanggalDari = (v) => {
+        if (typeof v === 'number' && isFinite(v)) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+        const t = teks(v);
+        return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
+      };
+      const jamDari = (v) => {
+        if (teks(v) === '') return { ok: true, jam: '' };
+        if (typeof v === 'number' && isFinite(v) && v >= 0 && v < 1) {
+          const m = Math.round(v * 1440) % 1440;
+          return { ok: true, jam: String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') };
+        }
+        const m = teks(v).match(/^(\d{1,2}):(\d{2})$/);
+        if (m && Number(m[1]) < 24 && Number(m[2]) < 60) return { ok: true, jam: m[1].padStart(2, '0') + ':' + m[2] };
+        return { ok: false, jam: '' };
+      };
+
+      const existing = readJSON(RECORDS_FILE);
+      const sudahAda = new Set(existing.map((r) => r.phone + '|' + r.dateKey + '|' + r.type));
+      const batch = new Set();
+      const newRecords = [];
+      const baris = [];
+      const jenisKolom = [['masuk', colMasuk, 'Jam Masuk'], ['keluar', colPulang, 'Jam Pulang'], ['lembur_masuk', colLemburMasuk, 'Lembur Masuk'], ['lembur_keluar', colLemburPulang, 'Lembur Pulang']];
+      const lastRow = Math.max(1, ...Object.keys(grid).map(Number));
+
+      for (let r = 2; r <= lastRow; r++) {
+        const row = grid[r];
+        if (!row) continue;
+        const get = (c) => (c ? row[c] : undefined);
+        const nama = teks(get(colNama)), noId = teks(get(colNoId));
+        const adaJam = jenisKolom.some(([, c]) => teks(get(c)) !== '');
+        if (!nama && !noId && teks(get(colTanggal)) === '' && !adaJam) continue;
+
+        const item = { baris: r, nama, tanggal: '', status: 'gagal', pesan: '', jumlah: 0 };
+        const errs = [];
+        const emp = (noId && config.employees.find((e) => (e.idNumber || '') === noId))
+          || config.employees.find((e) => normNama(e.name) === normNama(nama));
+        if (!emp) errs.push('Karyawan tidak ditemukan (periksa Nama atau No ID)');
+        const dk = tanggalDari(get(colTanggal));
+        if (!dk) errs.push('Tanggal tidak valid (gunakan YYYY-MM-DD)');
+        else item.tanggal = dk;
+        if (dk) {
+          const lock = findLockCoveringDate(dk);
+          if (lock) errs.push(`Periode ${lock.from} s.d. ${lock.to} sudah dikunci`);
+        }
+        if (!adaJam) errs.push('Tidak ada jam absen yang diisi');
+
+        // Jam masuk wajib disertai lokasi dan shift yang dikenali (sama seperti input manual)
+        const jamMasuk = jamDari(get(colMasuk));
+        let lokasiInfo = null, shiftInfo = null;
+        if (!jamMasuk.ok) errs.push('Jam Masuk tidak valid (gunakan HH:MM)');
+        if (jamMasuk.jam) {
+          lokasiInfo = (config.locations || []).find((l) => l.name === teks(get(colLokasi))) || null;
+          if (!lokasiInfo) errs.push('Lokasi untuk Jam Masuk tidak dikenali');
+          else {
+            shiftInfo = (lokasiInfo.shifts || []).find((sh) => sh.name === teks(get(colShift))) || null;
+            if (!shiftInfo) errs.push('Shift untuk Jam Masuk tidak dikenali di lokasi tersebut');
+          }
+        }
+
+        const recs = [];
+        if (emp && dk && errs.length === 0) {
+          for (const [jenis, col, label] of jenisKolom) {
+            const j = jenis === 'masuk' ? jamMasuk : jamDari(get(col));
+            if (!j.ok) { errs.push(label + ' tidak valid (gunakan HH:MM)'); continue; }
+            if (!j.jam) continue;
+            const key = emp.phone + '|' + dk + '|' + jenis;
+            if (sudahAda.has(key) || batch.has(key)) { errs.push(label + ' untuk tanggal ini sudah ada'); continue; }
+            batch.add(key);
+            recs.push({
+              id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+              phone: emp.phone, employee: emp.name, type: jenis,
+              lat: null, lng: null,
+              nearestLocation: jenis === 'masuk' ? lokasiInfo.name : 'Input Manual Admin',
+              distanceMeters: 0, withinRadius: true,
+              shift: jenis === 'masuk' && shiftInfo ? shiftInfo.name : null,
+              shiftStart: jenis === 'masuk' && shiftInfo ? shiftInfo.startTime : null,
+              shiftEnd: jenis === 'masuk' && shiftInfo ? shiftInfo.endTime : null,
+              photoFilename: null, serverTime: new Date().toISOString(), deviceTime: null,
+              dateKey: dk, timeHHMM: j.jam, manualByAdmin: true,
+            });
+          }
+        }
+
+        if (errs.length) item.pesan = errs.join('; ');
+        else {
+          item.status = 'siap';
+          item.jumlah = recs.length;
+          item.pesan = recs.length + ' jam akan disimpan';
+          newRecords.push(...recs);
+        }
+        baris.push(item);
+      }
+
+      const siap = baris.filter((b) => b.status === 'siap').length;
+      const simpan = body.simpan === true;
+      if (simpan && newRecords.length) {
+        const all = readJSON(RECORDS_FILE);
+        all.push(...newRecords);
+        writeJSON(RECORDS_FILE, all);
+      }
+      return sendJSON(res, 200, {
+        ok: true, simpan,
+        barisSiap: siap, barisGagal: baris.length - siap,
+        jumlahData: newRecords.length, tersimpan: simpan ? newRecords.length : 0,
+        baris,
+      });
+    }
+
     if (pathName === '/api/records/export' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const from = url.searchParams.get('from');

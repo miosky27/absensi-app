@@ -658,11 +658,29 @@
         </div>
 
         <div id="sub-bulanan" style="display:none">
+          <div class="card flat-m" id="rekapImportPanel" style="display:none;margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+              <strong>Preview Import Absensi</strong>
+              <span id="rekapImportRingkas" class="page-sub"></span>
+              <div class="spacer"></div>
+              <button class="btn secondary" type="button" id="rekapImportBatalBtn">Batal</button>
+              <button class="btn" type="button" id="rekapImportSimpanBtn" disabled>Simpan</button>
+            </div>
+            <div class="table-wrap">
+            <table class="rtable">
+              <thead><tr><th>Baris</th><th>Nama</th><th>Tanggal</th><th>Status</th><th>Keterangan</th></tr></thead>
+              <tbody id="rekapImportBody"></tbody>
+            </table>
+            </div>
+          </div>
           <div class="card flat-m">
             <div class="toolbar" style="margin-bottom:16px">
               <div class="field"><label>Dari Tanggal</label><input type="date" id="rekapFromInput" /></div>
               <div class="field"><label>Sampai Tanggal</label><input type="date" id="rekapToInput" /></div>
               <button class="btn" type="button" id="rekapFilterBtn">Tampilkan</button>
+              <button class="btn secondary" type="button" id="rekapTemplateBtn"><svg class="ic"><use href="#i-download"/></svg>Download Template</button>
+              <button class="btn secondary" type="button" id="rekapImportBtn"><svg class="ic"><use href="#i-download"/></svg>Import Excel</button>
+              <input type="file" id="rekapImportFile" accept=".xlsx" style="display:none" />
             </div>
             <div class="table-wrap">
             <table id="monthTable" class="rtable">
@@ -1281,6 +1299,70 @@ document.getElementById('dailyShowBtn').addEventListener('click', loadDaily);
   if (window.matchMedia('(max-width: 860px)').matches) loadGaji();
 }));
 document.getElementById('rekapFilterBtn').addEventListener('click', loadMonthly);
+
+// ---- Template & import data absensi (tab Rekap) ----
+let rekapImportBase64 = '';
+document.getElementById('rekapTemplateBtn').addEventListener('click', async () => {
+  const res = await fetch('/api/records/import-template', { headers: authHeaders() });
+  if (!res.ok) return alert('Gagal membuat template import.');
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = 'template-import-absensi.xlsx';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+document.getElementById('rekapImportBtn').addEventListener('click', () => document.getElementById('rekapImportFile').click());
+document.getElementById('rekapImportFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  rekapImportBase64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  await previewImportRekap();
+});
+async function kirimImportRekap(simpan) {
+  const res = await fetch('/api/records/import', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ base64: rekapImportBase64, simpan }) });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Import gagal.'); return null; }
+  return data;
+}
+const STATUS_IMPORT = { siap: 'Siap', gagal: 'Gagal' };
+async function previewImportRekap() {
+  const data = await kirimImportRekap(false);
+  if (!data) return;
+  document.getElementById('rekapImportPanel').style.display = 'block';
+  document.getElementById('rekapImportRingkas').textContent = data.barisSiap + ' baris siap, ' + data.barisGagal + ' baris gagal, ' + data.jumlahData + ' jam akan disimpan';
+  document.getElementById('rekapImportSimpanBtn').disabled = data.jumlahData === 0;
+  const tbody = document.getElementById('rekapImportBody');
+  tbody.innerHTML = '';
+  data.baris.forEach((b) => {
+    const tr = document.createElement('tr');
+    [b.baris, b.nama || '-', b.tanggal || '-', STATUS_IMPORT[b.status] || b.status, b.pesan].forEach((v) => {
+      const td = document.createElement('td');
+      td.textContent = String(v);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+function tutupImportRekap() {
+  rekapImportBase64 = '';
+  document.getElementById('rekapImportPanel').style.display = 'none';
+  document.getElementById('rekapImportSimpanBtn').disabled = true;
+}
+document.getElementById('rekapImportBatalBtn').addEventListener('click', tutupImportRekap);
+document.getElementById('rekapImportSimpanBtn').addEventListener('click', async () => {
+  if (!confirm('Simpan data absensi dari file ini? Baris yang gagal akan dilewati.')) return;
+  const data = await kirimImportRekap(true);
+  if (!data) return;
+  alert(data.tersimpan + ' data absensi tersimpan.');
+  tutupImportRekap();
+  loadMonthly();
+});
 
 // ---- Export rekap absensi (Excel/CSV, rentang tanggal & karyawan bebas) ----
 (function () {
