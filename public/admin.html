@@ -755,9 +755,12 @@
       <!-- ================= JADWAL KERJA ================= -->
       <div id="page-jadwal" class="page" style="display:none">
         <div class="page-head">
-          <div class="title-wrap"><button class="back-btn" type="button" data-goto="lainnya"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2 class="page-title">Jadwal Kerja</h2><div class="page-sub" id="jadwalSubtitle">Download template, isi jadwal di Excel (kode P, FL, X, dan warna sel), lalu upload dan bagikan</div></div></div>
+          <div class="title-wrap"><button class="back-btn" type="button" data-goto="lainnya"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2 class="page-title">Jadwal Kerja</h2><div class="page-sub" id="jadwalSubtitle">Download template, isi jadwal di Excel (kode shift, X, dan warna sel), lalu upload dan bagikan</div></div></div>
           <div class="page-head-actions">
             <input type="month" id="jadwalBulan" style="width:170px" title="Bulan jadwal" />
+            <select id="jadwalJabatan" style="width:170px" title="Jabatan"><option value="">Semua jabatan</option></select>
+            <select id="jadwalLokasi" style="width:180px" title="Lokasi kerja"><option value="">Semua lokasi</option></select>
+            <button class="btn secondary" id="jadwalKodeBtn" type="button">Kode Shift</button>
             <input type="file" id="jadwalFile" accept=".xlsx" style="display:none" />
             <button class="btn secondary" id="jadwalTemplateBtn" type="button"><svg class="ic"><use href="#i-download"/></svg>Download Template</button>
             <button class="btn secondary" id="jadwalUploadBtn" type="button"><svg class="ic"><use href="#i-download"/></svg>Upload Jadwal</button>
@@ -845,6 +848,22 @@
   </div>
 </div>
 
+<div id="jadwalKodeOverlay" class="modal-overlay">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-head"><h3 id="jadwalKodeTitle">Kode Shift</h3><button class="modal-close" type="button" id="jadwalKodeClose"><svg class="ic"><use href="#i-x"/></svg></button></div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom:10px" id="jadwalKodeHint"></p>
+      <table class="rtable" style="width:100%">
+        <thead><tr><th>Kode</th><th>Nama</th><th>Mulai</th><th>Selesai</th><th></th></tr></thead>
+        <tbody id="jadwalKodeBody"></tbody>
+      </table>
+      <button class="btn secondary" type="button" id="jadwalKodeTambah" style="margin-top:10px"><svg class="ic"><use href="#i-plus"/></svg>Tambah Kode</button>
+      <p class="hint" style="margin-top:10px">X selalu berarti libur. Kode baru berlaku untuk jadwal yang diupload setelah disimpan.</p>
+    </div>
+    <div class="modal-foot"><div class="right"><span id="jadwalKodeMsg" class="modal-msg"></span><button class="btn secondary" type="button" id="jadwalKodeBatal">Batal</button><button class="btn" type="button" id="jadwalKodeSimpan">Simpan</button></div></div>
+  </div>
+</div>
+
 <!-- ================= MODAL: TAMBAH/EDIT KARYAWAN ================= -->
 <div id="empModalOverlay" class="modal-overlay">
   <div class="modal">
@@ -867,6 +886,7 @@
         <div class="field"><label>No. HP</label><input type="text" id="empFPhone" /></div>
         <div class="field"><label>ID Karyawan</label><input type="text" id="empFIdNumber" /></div>
         <div class="field"><label>Jabatan</label><input type="text" id="empFPosition" /></div>
+        <div class="field"><label>Lokasi Kerja</label><input type="text" id="empFLokasiKerja" list="empFLokasiKerjaList" placeholder="Contoh: Outlet Indramayu" /><datalist id="empFLokasiKerjaList"></datalist></div>
         <div class="field"><label>Email</label><input type="email" id="empFEmail" /></div>
         <div class="field"><label>Tanggal Masuk</label><input type="date" id="empFTanggalMasuk" /></div>
         <div class="field"><label>Status</label><select id="empFStatus"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select></div>
@@ -1079,7 +1099,16 @@ function showApp() {
 
 // ---- Jadwal Kerja ----
 const JADWAL_NAMA_HARI = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
-let jadwalState = { month: '', jadwal: null, karyawan: [], halaman: 1 };
+let jadwalState = { month: '', jabatan: '', lokasi: '', jadwal: null, karyawan: [], halaman: 1, kodeShift: {}, kodeShiftKhusus: false, grupBulanIni: [] };
+function jadwalGrupQuery() { return '&jabatan=' + encodeURIComponent(jadwalState.jabatan) + '&lokasi=' + encodeURIComponent(jadwalState.lokasi); }
+function jadwalNamaGrup(jabatan, lokasi) { return (jabatan || 'Semua jabatan') + ' · ' + (lokasi || 'Semua lokasi'); }
+function isiPilihanJadwal(id, semuaLabel, daftar, nilai) {
+  const sel = document.getElementById(id);
+  const opsi = [...daftar];
+  if (nilai && !opsi.some((v) => v.toLowerCase() === nilai.toLowerCase())) opsi.push(nilai);
+  sel.innerHTML = '<option value="">' + semuaLabel + '</option>' + opsi.map((v) => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');
+  sel.value = nilai;
+}
 const JADWAL_TANGGAL_PER_HALAMAN = 15;
 function jadwalBulanIni() {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta' }).slice(0, 7);
@@ -1094,12 +1123,21 @@ function jadwalTint(hex, alpha) {
 async function loadJadwal() {
   if (!document.getElementById('jadwalBulan').value) document.getElementById('jadwalBulan').value = jadwalBulanIni();
   const month = document.getElementById('jadwalBulan').value;
-  if (jadwalState.month !== month) jadwalState.halaman = 1;
+  const jabatan = document.getElementById('jadwalJabatan').value;
+  const lokasi = document.getElementById('jadwalLokasi').value;
+  if (jadwalState.month !== month || jadwalState.jabatan !== jabatan || jadwalState.lokasi !== lokasi) jadwalState.halaman = 1;
   jadwalState.month = month;
-  const res = await fetch('/api/jadwal?month=' + encodeURIComponent(month), { headers: authHeaders() });
+  jadwalState.jabatan = jabatan;
+  jadwalState.lokasi = lokasi;
+  const res = await fetch('/api/jadwal?month=' + encodeURIComponent(month) + jadwalGrupQuery(), { headers: authHeaders() });
   const data = await res.json();
   jadwalState.jadwal = data.jadwal;
   jadwalState.karyawan = data.karyawan || [];
+  jadwalState.kodeShift = data.kodeShift || {};
+  jadwalState.kodeShiftKhusus = !!data.kodeShiftKhusus;
+  jadwalState.grupBulanIni = data.grupBulanIni || [];
+  isiPilihanJadwal('jadwalJabatan', 'Semua jabatan', data.pilihanJabatan || [], jabatan);
+  isiPilihanJadwal('jadwalLokasi', 'Semua lokasi', data.pilihanLokasi || [], lokasi);
   renderJadwal();
 }
 function renderJadwal() {
@@ -1110,18 +1148,22 @@ function renderJadwal() {
   const empty = document.getElementById('jadwalEmpty');
   const warnBox = document.getElementById('jadwalPeringatan');
   const ketCard = document.getElementById('jadwalKeteranganCard');
+  const grupLain = jadwalState.grupBulanIni.filter((g) => !(g.jabatan.toLowerCase() === jadwalState.jabatan.toLowerCase() && g.lokasi.toLowerCase() === jadwalState.lokasi.toLowerCase()));
+  const daftarGrup = grupLain.length
+    ? '<div class="hint" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">Jadwal lain bulan ini: ' + grupLain.map((g) => '<button class="btn secondary" type="button" style="padding:4px 10px;font-size:12px" data-jdgrup-jabatan="' + esc(g.jabatan) + '" data-jdgrup-lokasi="' + esc(g.lokasi) + '">' + esc(jadwalNamaGrup(g.jabatan, g.lokasi)) + '</button>').join('') + '</div>'
+    : '';
   if (!j) {
-    status.innerHTML = '<div class="strong">Belum ada jadwal untuk bulan ini</div><div class="hint" style="margin-top:4px">Klik Upload Jadwal untuk memilih file Excel.</div>';
+    status.innerHTML = '<div class="strong">Belum ada jadwal ' + esc(jadwalNamaGrup(jadwalState.jabatan, jadwalState.lokasi)) + ' untuk bulan ini</div><div class="hint" style="margin-top:4px">Pilih jabatan dan lokasi, download template, lalu klik Upload Jadwal.</div>' + daftarGrup;
     shareBtn.disabled = true;
     wrap.innerHTML = ''; empty.textContent = ''; warnBox.style.display = 'none'; ketCard.style.display = 'none';
     document.getElementById('jadwalPager').innerHTML = '';
     return;
   }
   const sudahBagi = (j.sharedPhones || []).length;
-  status.innerHTML = '<div class="strong">Diupload ' + esc(jadwalFmtWaktu(j.uploadedAt)) + (j.uploadedFile ? ' · ' + esc(j.uploadedFile) : '') + '</div>'
+  status.innerHTML = '<div class="strong">' + esc(jadwalNamaGrup(j.jabatan, j.lokasi)) + ' · Diupload ' + esc(jadwalFmtWaktu(j.uploadedAt)) + (j.uploadedFile ? ' · ' + esc(j.uploadedFile) : '') + '</div>'
     + '<div class="hint" style="margin-top:4px">' + (sudahBagi
       ? 'Dibagikan ke ' + sudahBagi + ' karyawan, terakhir ' + esc(jadwalFmtWaktu(j.sharedAt))
-      : 'Belum dibagikan. Karyawan sudah bisa melihat jadwal, tapi belum dapat notifikasi.') + '</div>';
+      : 'Belum dibagikan. Karyawan sudah bisa melihat jadwal, tapi belum dapat notifikasi.') + '</div>' + daftarGrup;
   shareBtn.disabled = j.rows.length === 0;
 
   // Peringatan dari file
@@ -1176,12 +1218,22 @@ function renderJadwal() {
   ketCard.style.display = 'block';
   const ket = [];
   (j.legend || []).forEach((l) => ket.push('<span><span class="sw" style="background:' + jadwalTint(l.warna, 0.5) + '"></span>' + esc(l.arti) + '</span>'));
-  ket.push('<span><b>P</b> = Pagi 06:40-14:30</span>', '<span><b>FL</b> = Full 06:30-17:00</span>', '<span><b style="color:#c5221f">X</b> = Libur</span>');
+  Object.entries(jadwalState.kodeShift || {}).forEach(([k, v]) => ket.push('<span><b>' + esc(k) + '</b> = ' + esc(v.label) + ' ' + esc(v.jam) + '</span>'));
+  ket.push('<span><b style="color:#c5221f">X</b> = Libur</span>');
   document.getElementById('jadwalKeterangan').innerHTML = ket.join('');
   document.getElementById('jadwalCatatan').innerHTML = (j.notes || []).map((n) => '<div>' + esc(n) + '</div>').join('');
 }
 
 document.getElementById('jadwalBulan').addEventListener('change', loadJadwal);
+document.getElementById('jadwalJabatan').addEventListener('change', loadJadwal);
+document.getElementById('jadwalLokasi').addEventListener('change', loadJadwal);
+document.getElementById('jadwalStatus').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-jdgrup-jabatan]');
+  if (!btn) return;
+  isiPilihanJadwal('jadwalJabatan', 'Semua jabatan', [...document.getElementById('jadwalJabatan').options].map((o) => o.value).filter(Boolean), btn.dataset.jdgrupJabatan);
+  isiPilihanJadwal('jadwalLokasi', 'Semua lokasi', [...document.getElementById('jadwalLokasi').options].map((o) => o.value).filter(Boolean), btn.dataset.jdgrupLokasi);
+  loadJadwal();
+});
 document.getElementById('jadwalPager').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-jdhal]');
   if (!btn || btn.disabled) return;
@@ -1191,11 +1243,11 @@ document.getElementById('jadwalPager').addEventListener('click', (e) => {
 document.getElementById('jadwalTemplateBtn').addEventListener('click', async () => {
   const month = document.getElementById('jadwalBulan').value;
   if (!month) return alert('Pilih bulan jadwal dulu.');
-  const res = await fetch('/api/jadwal/template?month=' + encodeURIComponent(month), { headers: authHeaders() });
+  const res = await fetch('/api/jadwal/template?month=' + encodeURIComponent(month) + jadwalGrupQuery(), { headers: authHeaders() });
   if (!res.ok) return alert('Gagal membuat template jadwal.');
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a');
-  a.href = url; a.download = 'template-jadwal-' + month + '.xlsx';
+  a.href = url; a.download = 'template-jadwal-' + month + [jadwalState.jabatan, jadwalState.lokasi].filter(Boolean).map((v) => '-' + v.replace(/[^A-Za-z0-9]+/g, '_')).join('') + '.xlsx';
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 });
@@ -1206,15 +1258,60 @@ document.getElementById('jadwalFile').addEventListener('change', async (e) => {
   if (!file) return;
   const month = document.getElementById('jadwalBulan').value;
   if (!month) return alert('Pilih bulan jadwal dulu.');
+  if (jadwalState.jadwal && !confirm('Jadwal ' + jadwalNamaGrup(jadwalState.jabatan, jadwalState.lokasi) + ' bulan ini sudah ada dan akan diganti. Lanjutkan?')) return;
   const base64 = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(',')[1]);
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
-  const res = await fetch('/api/jadwal/upload', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ month, filename: file.name, base64 }) });
+  const res = await fetch('/api/jadwal/upload', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ month, jabatan: jadwalState.jabatan, lokasi: jadwalState.lokasi, filename: file.name, base64 }) });
   const data = await res.json();
   if (!res.ok) return alert(data.error || 'Upload jadwal gagal.');
+  await loadJadwal();
+});
+
+function barisKodeShift(k) {
+  const [mulai, selesai] = String(k.jam || '').split('-');
+  return '<tr><td><input type="text" class="jk-kode" maxlength="4" style="width:64px;text-transform:uppercase" value="' + esc(k.kode || '') + '" /></td>'
+    + '<td><input type="text" class="jk-label" style="width:100%;min-width:120px" value="' + esc(k.label || '') + '" placeholder="Full" /></td>'
+    + '<td><input type="time" class="jk-mulai" value="' + esc(mulai || '') + '" /></td>'
+    + '<td><input type="time" class="jk-selesai" value="' + esc(selesai || '') + '" /></td>'
+    + '<td><button class="btn secondary" type="button" data-jk-hapus title="Hapus" aria-label="Hapus"><svg class="ic"><use href="#i-x"/></svg></button></td></tr>';
+}
+function openJadwalKode() {
+  const jabatan = jadwalState.jabatan;
+  document.getElementById('jadwalKodeTitle').textContent = 'Kode Shift · ' + (jabatan || 'Default');
+  document.getElementById('jadwalKodeHint').textContent = jabatan
+    ? (jadwalState.kodeShiftKhusus ? 'Kode khusus untuk jabatan ' + jabatan + '.' : 'Jabatan ' + jabatan + ' masih memakai kode default. Simpan untuk membuat kode khusus.')
+    : 'Kode default, dipakai jabatan yang tidak punya kode khusus.';
+  document.getElementById('jadwalKodeBody').innerHTML = Object.entries(jadwalState.kodeShift || {}).map(([kode, v]) => barisKodeShift({ kode, label: v.label, jam: v.jam })).join('');
+  document.getElementById('jadwalKodeMsg').textContent = '';
+  document.getElementById('jadwalKodeOverlay').style.display = 'flex';
+}
+function tutupJadwalKode() { document.getElementById('jadwalKodeOverlay').style.display = 'none'; }
+document.getElementById('jadwalKodeBtn').addEventListener('click', openJadwalKode);
+document.getElementById('jadwalKodeClose').addEventListener('click', tutupJadwalKode);
+document.getElementById('jadwalKodeBatal').addEventListener('click', tutupJadwalKode);
+document.getElementById('jadwalKodeTambah').addEventListener('click', () => {
+  document.getElementById('jadwalKodeBody').insertAdjacentHTML('beforeend', barisKodeShift({}));
+});
+document.getElementById('jadwalKodeBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-jk-hapus]');
+  if (btn) btn.closest('tr').remove();
+});
+document.getElementById('jadwalKodeSimpan').addEventListener('click', async () => {
+  const kode = [...document.querySelectorAll('#jadwalKodeBody tr')].map((tr) => ({
+    kode: tr.querySelector('.jk-kode').value.trim().toUpperCase(),
+    label: tr.querySelector('.jk-label').value.trim(),
+    mulai: tr.querySelector('.jk-mulai').value,
+    selesai: tr.querySelector('.jk-selesai').value,
+  })).filter((k) => k.kode || k.label || k.mulai || k.selesai);
+  const msg = document.getElementById('jadwalKodeMsg');
+  const res = await fetch('/api/jadwal/kode-shift', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ jabatan: jadwalState.jabatan, kode }) });
+  const data = await res.json();
+  if (!res.ok) { msg.textContent = data.error || 'Gagal menyimpan kode shift.'; return; }
+  tutupJadwalKode();
   await loadJadwal();
 });
 
@@ -1239,7 +1336,7 @@ document.getElementById('jadwalShareConfirm').addEventListener('click', async ()
   const phones = [...document.querySelectorAll('.jadwal-share-cb:checked')].map((cb) => cb.value);
   const msg = document.getElementById('jadwalShareMsg');
   if (!phones.length) { msg.textContent = 'Pilih minimal satu karyawan.'; return; }
-  const res = await fetch('/api/jadwal/share', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ month: jadwalState.month, phones }) });
+  const res = await fetch('/api/jadwal/share', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ month: jadwalState.month, jabatan: jadwalState.jabatan, lokasi: jadwalState.lokasi, phones }) });
   const data = await res.json();
   if (!res.ok) { msg.textContent = data.error || 'Gagal membagikan.'; return; }
   document.getElementById('jadwalShareOverlay').style.display = 'none';
@@ -2676,6 +2773,9 @@ function openEmpModal(idx) {
   document.getElementById('empFPhone').value = emp.phone || '';
   document.getElementById('empFIdNumber').value = emp.idNumber || '';
   document.getElementById('empFPosition').value = emp.position || '';
+  document.getElementById('empFLokasiKerja').value = emp.lokasiKerja || '';
+  const lokasiSaran = [...new Set([...(currentLocations || []).map((l) => l.name), ...currentEmployees.map((e) => e.lokasiKerja)].map((v) => String(v || '').trim()).filter(Boolean))];
+  document.getElementById('empFLokasiKerjaList').innerHTML = lokasiSaran.map((v) => '<option value="' + esc(v) + '"></option>').join('');
   document.getElementById('empFEmail').value = emp.email || '';
   document.getElementById('empFTanggalMasuk').value = emp.tanggalMasuk || '';
   document.getElementById('empFGajiPokok').value = emp.gajiPokok || '';
@@ -2716,6 +2816,7 @@ document.getElementById('empModalSaveBtn').addEventListener('click', async () =>
     name: [namaDepan, namaBelakang].filter(Boolean).join(' ').trim(),
     idNumber: document.getElementById('empFIdNumber').value.trim(),
     position: document.getElementById('empFPosition').value.trim(),
+    lokasiKerja: document.getElementById('empFLokasiKerja').value.trim(),
     email: document.getElementById('empFEmail').value.trim(),
     tanggalMasuk: document.getElementById('empFTanggalMasuk').value,
     gajiPokok: Number(document.getElementById('empFGajiPokok').value) || 0,

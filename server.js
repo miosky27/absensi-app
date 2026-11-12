@@ -112,11 +112,17 @@ function migrateConfig(config) {
     // Batas jarak maksimal (Task #38): lebih dari ini, absen DITOLAK (bukan cuma ditandai).
     if (loc.maxDistanceMeters === undefined) { loc.maxDistanceMeters = 50; changed = true; }
   }
+  // Kode shift jadwal per jabatan (kunci = nama jabatan huruf kecil). Jabatan tanpa entri memakai kode default.
+  if (!config.jadwalKodeShift || typeof config.jadwalKodeShift !== 'object') {
+    config.jadwalKodeShift = { packing: { FL: { label: 'Full', jam: '05:00-17:00' } } };
+    changed = true;
+  }
   // Karyawan lama (sebelum fitur foto/No ID/jabatan) belum punya field-field ini.
   if (!Array.isArray(config.employees)) config.employees = [];
   for (const emp of config.employees) {
     if (emp.idNumber === undefined) { emp.idNumber = ''; changed = true; }
     if (emp.position === undefined) { emp.position = ''; changed = true; }
+    if (emp.lokasiKerja === undefined) { emp.lokasiKerja = ''; changed = true; }
     if (emp.photoFilename === undefined) { emp.photoFilename = null; changed = true; }
     if (emp.gajiPokok === undefined) { emp.gajiPokok = 0; changed = true; }
     if (emp.upahLemburPerJam === undefined) { emp.upahLemburPerJam = 0; changed = true; }
@@ -156,7 +162,23 @@ function migrateConfig(config) {
 // ---------- Parser CSV sederhana (tanpa dependensi eksternal) ----------
 // Mendukung koma sebagai pemisah dan tanda kutip ganda untuk teks yang mengandung koma.
 const { unzipEntries, xmlDecode, readSheetCells } = require('./lib/xlsx-read');
-const { parseJadwalXlsx, jadwalUntukKaryawan, buatTemplateJadwal, normalizeName: normalizeNamaJadwal, WEEKDAY_NAMES } = require('./lib/jadwal');
+const { parseJadwalXlsx, jadwalUntukKaryawan, buatTemplateJadwal, normalizeName: normalizeNamaJadwal, WEEKDAY_NAMES, SHIFT_CODES } = require('./lib/jadwal');
+
+// Jadwal disimpan per bulan + jabatan + lokasi kerja. Jadwal lama (tanpa jabatan dan lokasi) tetap memakai kunci bulan saja.
+function normGrupJadwal(v) { return String(v || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function kunciJadwal(month, jabatan, lokasi) {
+  const j = normGrupJadwal(jabatan), l = normGrupJadwal(lokasi);
+  return (j || l) ? `${month}|${j}|${l}` : month;
+}
+function kodeShiftJabatan(config, jabatan) {
+  const semua = config.jadwalKodeShift || {};
+  const k = normGrupJadwal(jabatan);
+  return (k && semua[k] && Object.keys(semua[k]).length) ? semua[k] : (semua[''] && Object.keys(semua['']).length ? semua[''] : SHIFT_CODES);
+}
+function cocokGrupJadwal(emp, jabatan, lokasi) {
+  return (!normGrupJadwal(jabatan) || normGrupJadwal(emp.position) === normGrupJadwal(jabatan))
+    && (!normGrupJadwal(lokasi) || normGrupJadwal(emp.lokasiKerja) === normGrupJadwal(lokasi));
+}
 function parseXlsxRows(buf) {
   const files = unzipEntries(buf);
   const shared = [];
@@ -2137,6 +2159,7 @@ function reasonLabelAbsen(reason) {
       const colPhone = findCol('no telepon', 'telepon', 'phone', 'no hp', 'nomor telepon', 'nomor hp', 'hp');
       const colId = findCol('no id', 'nik', 'id', 'id number', 'nomor id');
       const colPos = findCol('jabatan', 'posisi', 'position');
+      const colLokasiKerja = findCol('lokasi kerja', 'lokasi', 'outlet', 'cabang');
 
       if (colName === -1 || colPhone === -1) {
         return sendJSON(res, 400, { error: 'Kolom "Nama" dan "No Telepon" wajib ada di file.' });
@@ -2153,6 +2176,7 @@ function reasonLabelAbsen(reason) {
         if (/^8\d{7,}$/.test(phone)) phone = '0' + phone;
         const idNumber = colId !== -1 ? (r[colId] || '').trim() : '';
         const position = colPos !== -1 ? (r[colPos] || '').trim() : '';
+        const lokasiKerja = colLokasiKerja !== -1 ? (r[colLokasiKerja] || '').trim() : '';
         if (!name || !phone) { errors.push(`Baris ${i + 1}: nama/no telepon kosong, dilewati`); continue; }
 
         const existing = fresh.employees.find((e) => e.phone === phone);
@@ -2160,9 +2184,10 @@ function reasonLabelAbsen(reason) {
           existing.name = name;
           existing.idNumber = idNumber || existing.idNumber || '';
           existing.position = position || existing.position || '';
+          existing.lokasiKerja = lokasiKerja || existing.lokasiKerja || '';
           updated++;
         } else {
-          fresh.employees.push({ phone, name, idNumber, position, photoFilename: null });
+          fresh.employees.push({ phone, name, idNumber, position, lokasiKerja, photoFilename: null });
           added++;
         }
       }
@@ -2173,12 +2198,12 @@ function reasonLabelAbsen(reason) {
     // ---- Export data karyawan ke CSV (bisa dibuka di Excel) ----
     if (pathName === '/api/employees/export' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
-      const cols = ['Nama', 'No Telepon', 'No ID', 'Jabatan', 'Email', 'Tanggal Masuk', 'Status', 'Gaji Pokok', 'Upah Lembur Per Jam'];
+      const cols = ['Nama', 'No Telepon', 'No ID', 'Jabatan', 'Lokasi Kerja', 'Email', 'Tanggal Masuk', 'Status', 'Gaji Pokok', 'Upah Lembur Per Jam'];
       // Export data karyawan dalam format Excel (.xlsx).
       const rows = [cols];
       for (const e of config.employees) {
         rows.push([
-          e.name, e.phone, e.idNumber || '', e.position || '', e.email || '',
+          e.name, e.phone, e.idNumber || '', e.position || '', e.lokasiKerja || '', e.email || '',
           e.tanggalMasuk || '', e.status || 'aktif', Number(e.gajiPokok) || 0, Number(e.upahLemburPerJam) || 0,
         ]);
       }
@@ -2397,12 +2422,14 @@ function reasonLabelAbsen(reason) {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const month = String(url.searchParams.get('month') || '');
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return sendJSON(res, 400, { error: 'Bulan tidak valid (format YYYY-MM)' });
-      const nama = config.employees.filter((e) => e.status !== 'nonaktif').map((e) => e.name);
+      const jabatan = String(url.searchParams.get('jabatan') || '').trim();
+      const lokasi = String(url.searchParams.get('lokasi') || '').trim();
+      const nama = config.employees.filter((e) => e.status !== 'nonaktif' && cocokGrupJadwal(e, jabatan, lokasi)).map((e) => e.name);
       const rows = buatTemplateJadwal(month, nama, { TEBAL: XLSX_STYLE.BOLD, BIRU: XLSX_STYLE.FILL_BIRU, HIJAU: XLSX_STYLE.FILL_HIJAU });
       const xlsxBuffer = buildXlsx([{ name: 'Jadwal', rows }]);
       res.writeHead(200, {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="template-jadwal-${month}.xlsx"`,
+        'Content-Disposition': `attachment; filename="template-jadwal-${month}${[jabatan, lokasi].filter(Boolean).map((v) => '-' + v.replace(/[^A-Za-z0-9]+/g, '_')).join('')}.xlsx"`,
       });
       return res.end(xlsxBuffer);
     }
@@ -2414,12 +2441,21 @@ function reasonLabelAbsen(reason) {
       const month = String(body.month || '');
       if (!body.base64) return sendJSON(res, 400, { error: 'File jadwal belum dipilih' });
       let data;
-      try { data = parseJadwalXlsx(Buffer.from(String(body.base64), 'base64'), month); }
+      const jabatan = String(body.jabatan || '').trim();
+      const lokasi = String(body.lokasi || '').trim();
+      try { data = parseJadwalXlsx(Buffer.from(String(body.base64), 'base64'), month, kodeShiftJabatan(config, jabatan)); }
       catch (e) { return sendJSON(res, 400, { error: e.message }); }
+      // Teks pendek mirip kode shift yang tidak dikenal untuk jabatan ini: beri peringatan ke admin.
+      const kodeTakDikenal = new Set();
+      for (const r of data.rows) for (const e of Object.values(r.days)) if (e.teks && /^[A-Za-z0-9]{1,4}$/.test(String(e.teks).trim())) kodeTakDikenal.add(String(e.teks).trim().toUpperCase());
+      if (kodeTakDikenal.size) data.warnings = [...(data.warnings || []), `Kode ${[...kodeTakDikenal].join(", ")} tidak terdaftar di Kode Shift ${jabatan || "default"}. Sel tersebut tampil sebagai teks biasa.`];
       const all = readJSON(JADWAL_FILE);
-      const prev = all[month];
-      all[month] = {
+      const kunci = kunciJadwal(month, jabatan, lokasi);
+      const prev = all[kunci];
+      all[kunci] = {
         month,
+        jabatan,
+        lokasi,
         uploadedAt: new Date().toISOString(),
         uploadedFile: String(body.filename || '').slice(0, 200),
         rows: data.rows,
@@ -2439,13 +2475,47 @@ function reasonLabelAbsen(reason) {
     if (pathName === '/api/jadwal' && req.method === 'GET') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const month = String(url.searchParams.get('month') || '');
-      const data = readJSON(JADWAL_FILE)[month] || null;
+      const jabatan = String(url.searchParams.get('jabatan') || '').trim();
+      const lokasi = String(url.searchParams.get('lokasi') || '').trim();
+      const semuaJadwal = readJSON(JADWAL_FILE);
+      const data = semuaJadwal[kunciJadwal(month, jabatan, lokasi)] || null;
       const karyawan = config.employees.map((e) => ({ name: e.name, phone: e.phone, status: e.status || 'aktif' }));
+      const unik = (arr) => [...new Map(arr.map((v) => String(v || '').trim()).filter(Boolean).map((v) => [normGrupJadwal(v), v])).values()].sort((a, b) => a.localeCompare(b));
+      const pilihanJabatan = unik(config.employees.map((e) => e.position));
+      const pilihanLokasi = unik([...config.employees.map((e) => e.lokasiKerja), ...(config.locations || []).map((l) => l.name)]);
+      const grupBulanIni = Object.values(semuaJadwal).filter((m) => m.month === month)
+        .map((m) => ({ jabatan: m.jabatan || '', lokasi: m.lokasi || '', jumlah: (m.rows || []).length }));
+      const kodeShift = kodeShiftJabatan(config, jabatan);
       const rows = data ? data.rows.map((r) => {
         const emp = config.employees.find((e) => normalizeNamaJadwal(e.name) === normalizeNamaJadwal(r.name));
         return { name: r.name, phone: emp ? emp.phone : null, days: r.days };
       }) : [];
-      return sendJSON(res, 200, { month, jadwal: data ? { ...data, rows } : null, karyawan });
+      return sendJSON(res, 200, { month, jabatan, lokasi, jadwal: data ? { ...data, rows } : null, karyawan, pilihanJabatan, pilihanLokasi, grupBulanIni, kodeShift, kodeShiftKhusus: !!(normGrupJadwal(jabatan) && (config.jadwalKodeShift || {})[normGrupJadwal(jabatan)]) });
+    }
+
+    // Admin: ubah kode shift untuk satu jabatan. Daftar kosong = kembali ke kode default.
+    if (pathName === '/api/jadwal/kode-shift' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const kunci = normGrupJadwal(body.jabatan);
+      const daftar = Array.isArray(body.kode) ? body.kode : [];
+      const hasil = {};
+      for (const k of daftar) {
+        const kode = String(k.kode || '').trim().toUpperCase();
+        const label = String(k.label || '').trim().slice(0, 40);
+        const mulai = String(k.mulai || '').trim(), selesai = String(k.selesai || '').trim();
+        if (!/^[A-Z0-9]{1,4}$/.test(kode)) return sendJSON(res, 400, { error: `Kode "${kode || '(kosong)'}" tidak valid. Pakai 1-4 huruf atau angka.` });
+        if (kode === 'X') return sendJSON(res, 400, { error: 'Kode X sudah dipakai untuk libur.' });
+        if (hasil[kode]) return sendJSON(res, 400, { error: `Kode ${kode} ditulis lebih dari sekali.` });
+        if (!/^\d{2}:\d{2}$/.test(mulai) || !/^\d{2}:\d{2}$/.test(selesai)) return sendJSON(res, 400, { error: `Jam untuk kode ${kode} belum lengkap.` });
+        hasil[kode] = { label: label || kode, jam: `${mulai}-${selesai}` };
+      }
+      const fresh = migrateConfig(readJSON(CONFIG_FILE));
+      fresh.jadwalKodeShift = { ...(fresh.jadwalKodeShift || {}) };
+      if (Object.keys(hasil).length) fresh.jadwalKodeShift[kunci] = hasil;
+      else delete fresh.jadwalKodeShift[kunci];
+      writeJSON(CONFIG_FILE, fresh);
+      return sendJSON(res, 200, { ok: true, kodeShift: kodeShiftJabatan(fresh, body.jabatan) });
     }
 
     // Admin: bagikan jadwal ke karyawan yang dipilih. Setiap karyawan dapat notifikasi.
@@ -2454,7 +2524,8 @@ function reasonLabelAbsen(reason) {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       const month = String(body.month || '');
       const all = readJSON(JADWAL_FILE);
-      const data = all[month];
+      const kunci = kunciJadwal(month, body.jabatan, body.lokasi);
+      const data = all[kunci];
       if (!data) return sendJSON(res, 404, { error: 'Jadwal bulan ini belum diupload' });
       const pilihan = Array.isArray(body.phones) ? body.phones.map((p) => String(p)) : [];
       const terpilih = config.employees.filter((e) => pilihan.includes(String(e.phone))
@@ -2469,7 +2540,7 @@ function reasonLabelAbsen(reason) {
       data.sharedAt = at;
       data.sharedPhones = [...new Set([...(data.sharedPhones || []), ...terpilih.map((e) => e.phone)])];
       data.shareHistory = [...(data.shareHistory || []), { at, phones: terpilih.map((e) => e.phone) }];
-      all[month] = data;
+      all[kunci] = data;
       writeJSON(JADWAL_FILE, all);
       return sendJSON(res, 200, { ok: true, dibagikan: terpilih.length });
     }
@@ -2479,10 +2550,19 @@ function reasonLabelAbsen(reason) {
       const phone = String(url.searchParams.get('phone') || '').trim();
       const emp = config.employees.find((e) => e.phone === phone);
       if (!emp) return sendJSON(res, 200, { bulan: [] });
-      const bulan = Object.values(readJSON(JADWAL_FILE))
-        .sort((a, b) => (a.month < b.month ? 1 : -1))
-        .map((m) => ({ month: m.month, uploadedAt: m.uploadedAt, hari: jadwalUntukKaryawan(m, emp.name), legend: m.legend, notes: m.notes }))
-        .filter((m) => m.hari.length > 0);
+      // Satu jadwal per bulan. Kalau nama karyawan ada di beberapa jadwal pada bulan yang sama,
+      // pakai jadwal yang jabatan dan lokasinya cocok dengan data karyawan, lalu yang terakhir diupload.
+      const perBulan = new Map();
+      for (const m of Object.values(readJSON(JADWAL_FILE))) {
+        const kode = kodeShiftJabatan(config, m.jabatan);
+        const hari = jadwalUntukKaryawan(m, emp.name, kode);
+        if (!hari.length) continue;
+        const skor = (m.jabatan || m.lokasi) ? (cocokGrupJadwal(emp, m.jabatan, m.lokasi) ? 2 : 1) : 0;
+        const kandidat = { month: m.month, uploadedAt: m.uploadedAt, jabatan: m.jabatan || '', lokasi: m.lokasi || '', hari, legend: m.legend, notes: m.notes, kodeShift: kode, skor };
+        const ada = perBulan.get(m.month);
+        if (!ada || skor > ada.skor || (skor === ada.skor && String(m.uploadedAt) > String(ada.uploadedAt))) perBulan.set(m.month, kandidat);
+      }
+      const bulan = [...perBulan.values()].sort((a, b) => (a.month < b.month ? 1 : -1));
       return sendJSON(res, 200, { bulan, namaHari: WEEKDAY_NAMES });
     }
 

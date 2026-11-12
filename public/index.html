@@ -756,7 +756,7 @@ function renderJadwalKaryawan() {
   }
   const pilih = bulan.find((b) => b.month === sel.value) || bulan[0];
   sel.value = pilih.month;
-  document.getElementById('jadwalEmpSub').textContent = `${pilih.hari.length} hari terjadwal`;
+  document.getElementById('jadwalEmpSub').textContent = [pilih.jabatan, pilih.lokasi].filter(Boolean).concat(`${pilih.hari.length} hari terjadwal`).join(' · ');
   empty.textContent = pilih.hari.length ? '' : 'Tidak ada jadwal untuk bulan ini.';
   const warnaByTugas = {};
   (pilih.legend || []).forEach((l) => { warnaByTugas[l.arti] = l.warna; });
@@ -775,7 +775,9 @@ function renderJadwalKaryawan() {
     const r = parseInt(l.warna.slice(0, 2), 16), g = parseInt(l.warna.slice(2, 4), 16), b = parseInt(l.warna.slice(4, 6), 16);
     return `<div><span class="sw" style="background:rgba(${r},${g},${b},0.5)"></span>${escHtml(l.arti)}</div>`;
   });
-  ketItems.push('<div><b>P</b> = Pagi 06:40-14:30</div>', '<div><b>FL</b> = Full 06:30-17:00</div>', '<div><b style="color:#c5221f">X</b> = Libur</div>');
+  const kodeShift = pilih.kodeShift || { P: { label: 'Pagi', jam: '06:40-14:30' }, FL: { label: 'Full', jam: '06:30-17:00' } };
+  Object.entries(kodeShift).forEach(([k, v]) => ketItems.push(`<div><b>${escHtml(k)}</b> = ${escHtml(v.label)} ${escHtml(v.jam)}</div>`));
+  ketItems.push('<div><b style="color:#c5221f">X</b> = Libur</div>');
   ket.innerHTML = ketItems.join('') + (pilih.notes || []).map((n) => `<div style="margin-top:6px">${escHtml(n)}</div>`).join('');
 }
 function escHtml(t) {
