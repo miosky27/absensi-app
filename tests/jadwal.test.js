@@ -60,3 +60,27 @@ test('menolak file yang berisi tanggal lebih dari jumlah hari di bulan itu', () 
   // File Oktober (31 hari) dibaca sebagai November (30 hari).
   assert.throws(() => parseJadwalXlsx(sampleBuf, '2026-11'), /hanya punya 30 hari/);
 });
+
+const { buildXlsx, XLSX_STYLE } = require('../lib/xlsx-write');
+const { buatTemplateJadwal } = require('../lib/jadwal');
+
+const GAYA_TEMPLATE = { TEBAL: XLSX_STYLE.BOLD, BIRU: XLSX_STYLE.FILL_BIRU, HIJAU: XLSX_STYLE.FILL_HIJAU };
+
+test('template jadwal bisa dibaca lagi, termasuk sel yang diisi admin dan warnanya diubah', () => {
+  const rows = buatTemplateJadwal('2026-11', ['Supreti Adilah', 'Rina Marlina'], GAYA_TEMPLATE);
+  // Admin mengisi: Supreti tanggal 1 = P biru, tanggal 2 = FL hijau, tanggal 3 = X (libur).
+  rows[2][1] = { v: 'P', s: XLSX_STYLE.FILL_BIRU };
+  rows[2][2] = { v: 'FL', s: XLSX_STYLE.FILL_HIJAU };
+  rows[2][3] = { v: 'X' };
+  const buf = buildXlsx([{ name: 'Jadwal', rows }]);
+  const d = parseJadwalXlsx(buf, '2026-11');
+  assert.deepEqual(d.rows.map((r) => r.name), ['Supreti Adilah', 'Rina Marlina']);
+  assert.deepEqual(d.legend.map((l) => l.arti), ['Membuat Laporan Penjualan', 'Bertanggung Jawab atas Kebersihan Outlet']);
+  assert.deepEqual(d.notes, []);
+  assert.deepEqual(d.warnings, []);
+  const supreti = d.rows[0].days;
+  assert.deepEqual(supreti['2026-11-01'], { shift: 'P', tugas: 'Membuat Laporan Penjualan' });
+  assert.deepEqual(supreti['2026-11-02'], { shift: 'FL', tugas: 'Bertanggung Jawab atas Kebersihan Outlet' });
+  assert.deepEqual(supreti['2026-11-03'], { libur: true });
+  assert.deepEqual(d.rows[1].days, {});
+});

@@ -737,10 +737,11 @@
       <!-- ================= JADWAL KERJA ================= -->
       <div id="page-jadwal" class="page" style="display:none">
         <div class="page-head">
-          <div class="title-wrap"><button class="back-btn" type="button" data-goto="lainnya"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2 class="page-title">Jadwal Kerja</h2><div class="page-sub" id="jadwalSubtitle">Upload jadwal bulanan, lalu bagikan ke karyawan</div></div></div>
+          <div class="title-wrap"><button class="back-btn" type="button" data-goto="lainnya"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2 class="page-title">Jadwal Kerja</h2><div class="page-sub" id="jadwalSubtitle">Download template, isi jadwal di Excel (kode P, FL, X, dan warna sel), lalu upload dan bagikan</div></div></div>
           <div class="page-head-actions">
             <input type="month" id="jadwalBulan" style="width:170px" title="Bulan jadwal" />
             <input type="file" id="jadwalFile" accept=".xlsx" style="display:none" />
+            <button class="btn secondary" id="jadwalTemplateBtn" type="button"><svg class="ic"><use href="#i-download"/></svg>Download Template</button>
             <button class="btn secondary" id="jadwalUploadBtn" type="button"><svg class="ic"><use href="#i-download"/></svg>Upload Jadwal</button>
             <button class="btn" id="jadwalShareBtn" type="button" disabled><svg class="ic"><use href="#i-plus"/></svg>Bagikan</button>
           </div>
@@ -1149,6 +1150,17 @@ function renderJadwal() {
 }
 
 document.getElementById('jadwalBulan').addEventListener('change', loadJadwal);
+document.getElementById('jadwalTemplateBtn').addEventListener('click', async () => {
+  const month = document.getElementById('jadwalBulan').value;
+  if (!month) return alert('Pilih bulan jadwal dulu.');
+  const res = await fetch('/api/jadwal/template?month=' + encodeURIComponent(month), { headers: authHeaders() });
+  if (!res.ok) return alert('Gagal membuat template jadwal.');
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = 'template-jadwal-' + month + '.xlsx';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
 document.getElementById('jadwalUploadBtn').addEventListener('click', () => document.getElementById('jadwalFile').click());
 document.getElementById('jadwalFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
