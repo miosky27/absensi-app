@@ -1131,9 +1131,9 @@ function renderJadwal() {
   const tanggalTampil = [];
   for (let d = mulai; d <= akhir; d++) tanggalTampil.push(d);
   const pager = document.getElementById('jadwalPager');
-  pager.innerHTML = '<button class="btn secondary" type="button" data-jdhal="-1"' + (jadwalState.halaman <= 1 ? ' disabled' : '') + '>&lsaquo; Sebelumnya</button>'
+  pager.innerHTML = '<button class="btn secondary" type="button" data-jdhal="-1" title="Sebelumnya" aria-label="Sebelumnya"' + (jadwalState.halaman <= 1 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-left"/></svg></button>'
     + '<span class="strong" style="font-size:13px">Tanggal ' + mulai + '&ndash;' + akhir + ' dari ' + jumlahHari + '</span>'
-    + '<button class="btn secondary" type="button" data-jdhal="1"' + (jadwalState.halaman >= totalHalaman ? ' disabled' : '') + '>Berikutnya &rsaquo;</button>';
+    + '<button class="btn secondary" type="button" data-jdhal="1" title="Berikutnya" aria-label="Berikutnya"' + (jadwalState.halaman >= totalHalaman ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-right"/></svg></button>';
   const head = '<tr><th class="jd-name">Nama</th>' + tanggalTampil.map((d) => {
     const wd = JADWAL_NAMA_HARI[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
     return '<th>' + d + '<div class="jd-wd">' + wd + '</div></th>';
