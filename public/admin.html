@@ -749,6 +749,7 @@
         <div class="card flat-m" id="jadwalStatus" style="margin-bottom:12px"></div>
         <div class="card flat-m" id="jadwalPeringatan" style="display:none;margin-bottom:12px;border-color:#f0d49a;background:#fffaf0"></div>
         <div class="card flat-m">
+          <div id="jadwalPager" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
           <div class="table-wrap" id="jadwalWrap"></div>
           <div class="empty" id="jadwalEmpty"></div>
         </div>
@@ -1060,7 +1061,8 @@ function showApp() {
 
 // ---- Jadwal Kerja ----
 const JADWAL_NAMA_HARI = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
-let jadwalState = { month: '', jadwal: null, karyawan: [] };
+let jadwalState = { month: '', jadwal: null, karyawan: [], halaman: 1 };
+const JADWAL_TANGGAL_PER_HALAMAN = 15;
 function jadwalBulanIni() {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta' }).slice(0, 7);
 }
@@ -1074,6 +1076,7 @@ function jadwalTint(hex, alpha) {
 async function loadJadwal() {
   if (!document.getElementById('jadwalBulan').value) document.getElementById('jadwalBulan').value = jadwalBulanIni();
   const month = document.getElementById('jadwalBulan').value;
+  if (jadwalState.month !== month) jadwalState.halaman = 1;
   jadwalState.month = month;
   const res = await fetch('/api/jadwal?month=' + encodeURIComponent(month), { headers: authHeaders() });
   const data = await res.json();
@@ -1093,6 +1096,7 @@ function renderJadwal() {
     status.innerHTML = '<div class="strong">Belum ada jadwal untuk bulan ini</div><div class="hint" style="margin-top:4px">Klik Upload Jadwal untuk memilih file Excel.</div>';
     shareBtn.disabled = true;
     wrap.innerHTML = ''; empty.textContent = ''; warnBox.style.display = 'none'; ketCard.style.display = 'none';
+    document.getElementById('jadwalPager').innerHTML = '';
     return;
   }
   const sudahBagi = (j.sharedPhones || []).length;
@@ -1119,14 +1123,24 @@ function renderJadwal() {
   const jumlahHari = new Date(Date.UTC(y, mo, 0)).getUTCDate();
   const warnaByTugas = {};
   (j.legend || []).forEach((l) => { warnaByTugas[l.arti] = l.warna; });
-  const head = '<tr><th class="jd-name">Nama</th>' + Array.from({ length: jumlahHari }, (_, i) => {
-    const d = i + 1;
+  // Dua halaman: tanggal 1 sampai 15, lalu tanggal 16 sampai akhir bulan.
+  const totalHalaman = jumlahHari > JADWAL_TANGGAL_PER_HALAMAN ? 2 : 1;
+  if (jadwalState.halaman > totalHalaman) jadwalState.halaman = totalHalaman;
+  const mulai = jadwalState.halaman === 1 ? 1 : JADWAL_TANGGAL_PER_HALAMAN + 1;
+  const akhir = jadwalState.halaman === 1 ? Math.min(jumlahHari, JADWAL_TANGGAL_PER_HALAMAN) : jumlahHari;
+  const tanggalTampil = [];
+  for (let d = mulai; d <= akhir; d++) tanggalTampil.push(d);
+  const pager = document.getElementById('jadwalPager');
+  pager.innerHTML = '<button class="btn secondary" type="button" data-jdhal="-1"' + (jadwalState.halaman <= 1 ? ' disabled' : '') + '>&lsaquo; Sebelumnya</button>'
+    + '<span class="strong" style="font-size:13px">Tanggal ' + mulai + '&ndash;' + akhir + ' dari ' + jumlahHari + '</span>'
+    + '<button class="btn secondary" type="button" data-jdhal="1"' + (jadwalState.halaman >= totalHalaman ? ' disabled' : '') + '>Berikutnya &rsaquo;</button>';
+  const head = '<tr><th class="jd-name">Nama</th>' + tanggalTampil.map((d) => {
     const wd = JADWAL_NAMA_HARI[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
     return '<th>' + d + '<div class="jd-wd">' + wd + '</div></th>';
   }).join('') + '</tr>';
   const body = j.rows.map((r) => {
-    const cells = Array.from({ length: jumlahHari }, (_, i) => {
-      const key = jadwalState.month + '-' + String(i + 1).padStart(2, '0');
+    const cells = tanggalTampil.map((d) => {
+      const key = jadwalState.month + '-' + String(d).padStart(2, '0');
       const e = r.days[key];
       if (!e) return '<td></td>';
       if (e.libur) return '<td class="jd-libur">X</td>';
@@ -1150,6 +1164,12 @@ function renderJadwal() {
 }
 
 document.getElementById('jadwalBulan').addEventListener('change', loadJadwal);
+document.getElementById('jadwalPager').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-jdhal]');
+  if (!btn || btn.disabled) return;
+  jadwalState.halaman += Number(btn.dataset.jdhal);
+  renderJadwal();
+});
 document.getElementById('jadwalTemplateBtn').addEventListener('click', async () => {
   const month = document.getElementById('jadwalBulan').value;
   if (!month) return alert('Pilih bulan jadwal dulu.');
