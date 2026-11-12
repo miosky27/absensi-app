@@ -430,14 +430,23 @@ document.getElementById('bukaJadwal').addEventListener('click', () => showPage('
 document.getElementById('tutupJadwal').addEventListener('click', () => showPage(lastPage));
 document.getElementById('jadwalEmpBulan').addEventListener('change', renderJadwalKaryawan);
 
-document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
-  const phone = phoneInput.value.trim();
+const SIMPAN_NOMOR_KEY = 'absensiNomorKaryawan';
+function simpanNomor(phone) { try { localStorage.setItem(SIMPAN_NOMOR_KEY, phone); } catch (e) {} }
+function hapusNomorTersimpan() { try { localStorage.removeItem(SIMPAN_NOMOR_KEY); } catch (e) {} }
+function ambilNomorTersimpan() { try { return localStorage.getItem(SIMPAN_NOMOR_KEY) || ''; } catch (e) { return ''; } }
+
+async function masukDenganNomor(phone, dariSimpanan) {
   if (!phone) return showStatus(phoneStatus, 'Nomor telepon wajib diisi', 'err');
-  showStatus(phoneStatus, 'Memeriksa...', 'warn');
+  if (!dariSimpanan) showStatus(phoneStatus, 'Memeriksa...', 'warn');
   try {
     const res = await fetch('/api/check-phone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
     const data = await res.json();
-    if (!res.ok) return showStatus(phoneStatus, data.error || 'Nomor tidak ditemukan', 'err');
+    if (!res.ok) {
+      if (dariSimpanan) { hapusNomorTersimpan(); return showStatus(phoneStatus, data.error || 'Nomor tidak terdaftar. Silakan masuk dengan nomor HP yang benar.', 'err'); }
+      return showStatus(phoneStatus, data.error || 'Nomor tidak ditemukan', 'err');
+    }
+    simpanNomor(phone);
+    phoneInput.value = phone;
     currentPhone = phone;
     currentProfile = data;
     loginScreen.style.display = 'none';
@@ -451,10 +460,14 @@ document.getElementById('checkPhoneBtn').addEventListener('click', async () => {
   } catch (e) {
     showStatus(phoneStatus, 'Gagal menghubungi server: ' + e.message, 'err');
   }
-});
+}
+document.getElementById('checkPhoneBtn').addEventListener('click', () => masukDenganNomor(phoneInput.value.trim(), false));
 phoneInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('checkPhoneBtn').click(); });
 
 document.getElementById('gantiNomor').addEventListener('click', () => {
+  hapusNomorTersimpan();
+  currentPhone = '';
+  phoneInput.value = '';
   mainWrap.style.display = 'none';
   bottomNav.style.display = 'none';
   loginScreen.style.display = 'flex';
@@ -1061,6 +1074,34 @@ async function loadMyKasbon() {
     emptyEl.textContent = 'Gagal memuat riwayat: ' + e.message;
   }
 }
+// Cek berkala: karyawan yang dinonaktifkan atau dihapus langsung dikeluarkan tanpa reload
+function keluarKarenaTidakAktif(pesan) {
+  hapusNomorTersimpan();
+  currentPhone = '';
+  phoneInput.value = '';
+  mainWrap.style.display = 'none';
+  bottomNav.style.display = 'none';
+  loginScreen.style.display = 'flex';
+  preview.style.display = 'none';
+  actionStatus.className = 'status';
+  showStatus(phoneStatus, pesan || 'Akun tidak aktif. Hubungi admin.', 'err');
+}
+async function cekStatusKaryawan() {
+  if (!currentPhone) return;
+  try {
+    const res = await fetch('/api/check-phone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: currentPhone }) });
+    if (res.status === 403 || res.status === 404) {
+      const data = await res.json().catch(() => ({}));
+      keluarKarenaTidakAktif(data.error);
+    }
+  } catch (e) { /* jaringan putus: dicek lagi di interval berikutnya */ }
+}
+setInterval(cekStatusKaryawan, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) cekStatusKaryawan(); });
+
+// Masuk otomatis jika nomor sudah tersimpan di browser ini
+const nomorTersimpan = ambilNomorTersimpan();
+if (nomorTersimpan) masukDenganNomor(nomorTersimpan, true);
 </script>
 </body>
 </html>
