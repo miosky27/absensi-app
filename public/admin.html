@@ -1560,7 +1560,7 @@ function isLateRecord(r) {
   return timeToMinutes(r.timeHHMM) > start + currentToleransi;
 }
 
-async function loadDaily() {
+async function loadDaily(tetapDiHalaman) {
   const date = document.getElementById('dateInput').value;
   if (date) document.getElementById('absensiSubtitle').textContent = new Date(date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const res = await fetch('/api/records?date=' + date, { headers: authHeaders() });
@@ -1634,7 +1634,7 @@ async function loadDaily() {
   }
 
   document.getElementById('dailyEmpty').textContent = allNames.length === 0 ? 'Belum ada data karyawan.' : '';
-  dailyPager.refresh();
+  dailyPager.refresh(tetapDiHalaman !== true); // setelah edit/hapus tetap di halaman yang sama
   const tipeLabel = { keluar: 'Pulang', lembur_masuk: 'Lembur Masuk', lembur_keluar: 'Lembur Pulang' };
   tbody.querySelectorAll('[data-manualedit]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -1655,7 +1655,7 @@ async function loadDaily() {
         ? await fetch(`/api/records/${recId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ timeHHMM }) })
         : await fetch('/api/records/manual', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ phone, type, dateKey: date, timeHHMM }) });
       if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menyimpan jam absen.'); return; }
-      loadDaily();
+      loadDaily(true);
     });
   });
   tbody.querySelectorAll('[data-delrec]').forEach((btn) => {
@@ -1664,7 +1664,7 @@ async function loadDaily() {
       if (!confirm(`Hapus data absen ${btn.dataset.deltipe} milik ${who}? Tindakan ini tidak bisa dibatalkan.`)) return;
       const res = await fetch(`/api/records/${btn.dataset.delrec}`, { method: 'DELETE', headers: authHeaders() });
       if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Gagal menghapus data absen.'); return; }
-      loadDaily();
+      loadDaily(true);
     });
   });
   tbody.querySelectorAll('[data-isimasuk]').forEach((btn) => {
@@ -2380,7 +2380,7 @@ document.getElementById('absenMasukModalSaveBtn').addEventListener('click', asyn
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { msg.textContent = data.error || 'Gagal menyimpan jam absen.'; return; }
   closeAbsenMasukModal();
-  loadDaily();
+  loadDaily(true);
   if (document.getElementById('page-dashboard').style.display !== 'none') loadDashboard();
 });
 
@@ -2549,7 +2549,7 @@ async function loadConfig() {
   currentEmployees = cfg.employees || [];
   currentLocations = cfg.locations || [];
   currentLocations.forEach((loc) => { if (!Array.isArray(loc.shifts)) loc.shifts = []; });
-  renderEmpList();
+  renderEmpList(false); // tetap di halaman yang sama setelah simpan/hapus
   renderLocList();
   renderExportEmpList();
   renderOwnerPwState(!!cfg.ownerPasswordSet);
@@ -2681,7 +2681,7 @@ document.querySelectorAll('#page-pegawai [data-empsubtab]').forEach((tab) => {
   });
 });
 
-function renderEmpList() {
+function renderEmpList(resetPage = true) {
   const container = document.getElementById('empList');
   container.innerHTML = '';
   const nAktif = currentEmployees.filter((e) => (e.status || 'aktif') === 'aktif').length;
@@ -2743,7 +2743,7 @@ function renderEmpList() {
       else alert('Gagal menghapus karyawan.');
     });
   });
-  empPager.refresh();
+  empPager.refresh(resetPage);
 }
 
 // ---- Modal Tambah/Edit Karyawan ----
