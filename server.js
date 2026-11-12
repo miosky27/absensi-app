@@ -170,11 +170,37 @@ function kunciJadwal(month, jabatan, lokasi) {
   const j = normGrupJadwal(jabatan), l = normGrupJadwal(lokasi);
   return (j || l) ? `${month}|${j}|${l}` : month;
 }
-function kodeShiftJabatan(config, jabatan) {
-  const semua = config.jadwalKodeShift || {};
-  const k = normGrupJadwal(jabatan);
-  return (k && semua[k] && Object.keys(semua[k]).length) ? semua[k] : (semua[''] && Object.keys(semua['']).length ? semua[''] : SHIFT_CODES);
+// Gabungkan jadwal lama dengan upload baru untuk grup yang sama. Hari yang sama dari upload baru menggantikan yang lama.
+function gabungRowsJadwal(lama, baru) {
+  const map = new Map();
+  for (const r of lama) map.set(normGrupJadwal(r.name), { ...r, days: { ...r.days } });
+  for (const r of baru) {
+    const k = normGrupJadwal(r.name);
+    const ada = map.get(k);
+    if (ada) { ada.name = r.name; ada.days = { ...ada.days, ...r.days }; }
+    else map.set(k, { ...r, days: { ...r.days } });
+  }
+  return [...map.values()];
 }
+// Kunci kode shift: "jabatan|lokasi" (paling spesifik), "jabatan" saja, atau "" (default).
+function kunciKodeShift(jabatan, lokasi) {
+  const j = normGrupJadwal(jabatan), l = normGrupJadwal(lokasi);
+  return j && l ? j + '|' + l : j;
+}
+// Urutan pencarian: jabatan+lokasi -> jabatan -> default. Mengembalikan kode dan sumbernya.
+function kodeShiftUntuk(config, jabatan, lokasi) {
+  const semua = config.jadwalKodeShift || {};
+  const j = normGrupJadwal(jabatan), l = normGrupJadwal(lokasi);
+  const kandidat = [];
+  if (j && l) kandidat.push([j + '|' + l, 'jabatan-lokasi']);
+  if (j) kandidat.push([j, 'jabatan']);
+  kandidat.push(['', 'default']);
+  for (const [k, sumber] of kandidat) {
+    if (semua[k] && Object.keys(semua[k]).length) return { kode: semua[k], sumber };
+  }
+  return { kode: SHIFT_CODES, sumber: 'bawaan' };
+}
+function kodeShiftJabatan(config, jabatan, lokasi) { return kodeShiftUntuk(config, jabatan, lokasi).kode; }
 function cocokGrupJadwal(emp, jabatan, lokasi) {
   return (!normGrupJadwal(jabatan) || normGrupJadwal(emp.position) === normGrupJadwal(jabatan))
     && (!normGrupJadwal(lokasi) || normGrupJadwal(emp.lokasiKerja) === normGrupJadwal(lokasi));
@@ -2443,7 +2469,7 @@ function reasonLabelAbsen(reason) {
       let data;
       const jabatan = String(body.jabatan || '').trim();
       const lokasi = String(body.lokasi || '').trim();
-      try { data = parseJadwalXlsx(Buffer.from(String(body.base64), 'base64'), month, kodeShiftJabatan(config, jabatan)); }
+      try { data = parseJadwalXlsx(Buffer.from(String(body.base64), 'base64'), month, kodeShiftJabatan(config, jabatan, lokasi)); }
       catch (e) { return sendJSON(res, 400, { error: e.message }); }
       // Teks pendek mirip kode shift yang tidak dikenal untuk jabatan ini: beri peringatan ke admin.
       const kodeTakDikenal = new Set();
@@ -2452,15 +2478,19 @@ function reasonLabelAbsen(reason) {
       const all = readJSON(JADWAL_FILE);
       const kunci = kunciJadwal(month, jabatan, lokasi);
       const prev = all[kunci];
+      const uploadedAt = new Date().toISOString();
+      const file = String(body.filename || '').slice(0, 200);
+      const notesGabung = [...(prev && prev.notes ? prev.notes : []), ...(data.notes || [])];
       all[kunci] = {
         month,
         jabatan,
         lokasi,
-        uploadedAt: new Date().toISOString(),
-        uploadedFile: String(body.filename || '').slice(0, 200),
-        rows: data.rows,
+        uploadedAt,
+        uploadedFile: file,
+        uploads: [...(prev && prev.uploads ? prev.uploads : []), { uploadedAt, uploadedFile: file, jumlahBaris: data.rows.length }],
+        rows: gabungRowsJadwal(prev && prev.rows ? prev.rows : [], data.rows),
         legend: data.legend,
-        notes: data.notes,
+        notes: [...new Map(notesGabung.map((n) => [JSON.stringify(n), n])).values()],
         mismatches: data.mismatches,
         warnings: data.warnings,
         sharedAt: prev ? prev.sharedAt : null,
@@ -2468,7 +2498,7 @@ function reasonLabelAbsen(reason) {
         shareHistory: prev ? prev.shareHistory : [],
       };
       writeJSON(JADWAL_FILE, all);
-      return sendJSON(res, 200, { ok: true, month, jumlahKaryawan: data.rows.length, legend: data.legend, notes: data.notes, mismatches: data.mismatches, warnings: data.warnings });
+      return sendJSON(res, 200, { ok: true, month, jumlahKaryawan: data.rows.length, legend: data.legend, notes: data.notes, mismatches: data.mismatches, warnings: data.warnings, digabung: !!prev });
     }
 
     // Admin: lihat jadwal satu bulan + daftar karyawan (untuk memilih siapa yang dibagikan).
@@ -2485,19 +2515,20 @@ function reasonLabelAbsen(reason) {
       const pilihanLokasi = unik([...config.employees.map((e) => e.lokasiKerja), ...(config.locations || []).map((l) => l.name)]);
       const grupBulanIni = Object.values(semuaJadwal).filter((m) => m.month === month)
         .map((m) => ({ jabatan: m.jabatan || '', lokasi: m.lokasi || '', jumlah: (m.rows || []).length }));
-      const kodeShift = kodeShiftJabatan(config, jabatan);
+      const kodeInfo = kodeShiftUntuk(config, jabatan, lokasi);
+      const kodeShift = kodeInfo.kode;
       const rows = data ? data.rows.map((r) => {
         const emp = config.employees.find((e) => normalizeNamaJadwal(e.name) === normalizeNamaJadwal(r.name));
         return { name: r.name, phone: emp ? emp.phone : null, days: r.days };
       }) : [];
-      return sendJSON(res, 200, { month, jabatan, lokasi, jadwal: data ? { ...data, rows } : null, karyawan, pilihanJabatan, pilihanLokasi, grupBulanIni, kodeShift, kodeShiftKhusus: !!(normGrupJadwal(jabatan) && (config.jadwalKodeShift || {})[normGrupJadwal(jabatan)]) });
+      return sendJSON(res, 200, { month, jabatan, lokasi, jadwal: data ? { ...data, rows } : null, karyawan, pilihanJabatan, pilihanLokasi, grupBulanIni, kodeShift, kodeShiftSumber: kodeInfo.sumber });
     }
 
     // Admin: ubah kode shift untuk satu jabatan. Daftar kosong = kembali ke kode default.
     if (pathName === '/api/jadwal/kode-shift' && req.method === 'POST') {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-      const kunci = normGrupJadwal(body.jabatan);
+      const kunci = kunciKodeShift(body.jabatan, body.lokasi);
       const daftar = Array.isArray(body.kode) ? body.kode : [];
       const hasil = {};
       for (const k of daftar) {
@@ -2515,7 +2546,7 @@ function reasonLabelAbsen(reason) {
       if (Object.keys(hasil).length) fresh.jadwalKodeShift[kunci] = hasil;
       else delete fresh.jadwalKodeShift[kunci];
       writeJSON(CONFIG_FILE, fresh);
-      return sendJSON(res, 200, { ok: true, kodeShift: kodeShiftJabatan(fresh, body.jabatan) });
+      return sendJSON(res, 200, { ok: true, kodeShift: kodeShiftJabatan(fresh, body.jabatan, body.lokasi) });
     }
 
     // Admin: bagikan jadwal ke karyawan yang dipilih. Setiap karyawan dapat notifikasi.
@@ -2554,7 +2585,7 @@ function reasonLabelAbsen(reason) {
       // pakai jadwal yang jabatan dan lokasinya cocok dengan data karyawan, lalu yang terakhir diupload.
       const perBulan = new Map();
       for (const m of Object.values(readJSON(JADWAL_FILE))) {
-        const kode = kodeShiftJabatan(config, m.jabatan);
+        const kode = kodeShiftJabatan(config, m.jabatan, m.lokasi);
         const hari = jadwalUntukKaryawan(m, emp.name, kode);
         if (!hari.length) continue;
         const skor = (m.jabatan || m.lokasi) ? (cocokGrupJadwal(emp, m.jabatan, m.lokasi) ? 2 : 1) : 0;

@@ -1099,7 +1099,7 @@ function showApp() {
 
 // ---- Jadwal Kerja ----
 const JADWAL_NAMA_HARI = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
-let jadwalState = { month: '', jabatan: '', lokasi: '', jadwal: null, karyawan: [], halaman: 1, kodeShift: {}, kodeShiftKhusus: false, grupBulanIni: [] };
+let jadwalState = { month: '', jabatan: '', lokasi: '', jadwal: null, karyawan: [], halaman: 1, kodeShift: {}, kodeShiftSumber: 'bawaan', grupBulanIni: [] };
 function jadwalGrupQuery() { return '&jabatan=' + encodeURIComponent(jadwalState.jabatan) + '&lokasi=' + encodeURIComponent(jadwalState.lokasi); }
 function jadwalNamaGrup(jabatan, lokasi) { return (jabatan || 'Semua jabatan') + ' · ' + (lokasi || 'Semua lokasi'); }
 function isiPilihanJadwal(id, semuaLabel, daftar, nilai) {
@@ -1134,7 +1134,7 @@ async function loadJadwal() {
   jadwalState.jadwal = data.jadwal;
   jadwalState.karyawan = data.karyawan || [];
   jadwalState.kodeShift = data.kodeShift || {};
-  jadwalState.kodeShiftKhusus = !!data.kodeShiftKhusus;
+  jadwalState.kodeShiftSumber = data.kodeShiftSumber || 'bawaan';
   jadwalState.grupBulanIni = data.grupBulanIni || [];
   isiPilihanJadwal('jadwalJabatan', 'Semua jabatan', data.pilihanJabatan || [], jabatan);
   isiPilihanJadwal('jadwalLokasi', 'Semua lokasi', data.pilihanLokasi || [], lokasi);
@@ -1258,7 +1258,6 @@ document.getElementById('jadwalFile').addEventListener('change', async (e) => {
   if (!file) return;
   const month = document.getElementById('jadwalBulan').value;
   if (!month) return alert('Pilih bulan jadwal dulu.');
-  if (jadwalState.jadwal && !confirm('Jadwal ' + jadwalNamaGrup(jadwalState.jabatan, jadwalState.lokasi) + ' bulan ini sudah ada dan akan diganti. Lanjutkan?')) return;
   const base64 = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(',')[1]);
@@ -1280,11 +1279,10 @@ function barisKodeShift(k) {
     + '<td><button class="btn secondary" type="button" data-jk-hapus title="Hapus" aria-label="Hapus"><svg class="ic"><use href="#i-x"/></svg></button></td></tr>';
 }
 function openJadwalKode() {
-  const jabatan = jadwalState.jabatan;
-  document.getElementById('jadwalKodeTitle').textContent = 'Kode Shift · ' + (jabatan || 'Default');
-  document.getElementById('jadwalKodeHint').textContent = jabatan
-    ? (jadwalState.kodeShiftKhusus ? 'Kode khusus untuk jabatan ' + jabatan + '.' : 'Jabatan ' + jabatan + ' masih memakai kode default. Simpan untuk membuat kode khusus.')
-    : 'Kode default, dipakai jabatan yang tidak punya kode khusus.';
+  const { jabatan, lokasi } = jadwalState;
+  document.getElementById('jadwalKodeTitle').textContent = 'Kode Shift · ' + (jabatan || 'Semua jabatan') + ' · ' + (lokasi || 'Semua lokasi');
+  const sumberTeks = { 'jabatan-lokasi': 'Kode khusus untuk jabatan dan lokasi ini.', jabatan: 'Memakai kode khusus jabatan ini. Simpan untuk membuat kode khusus lokasi ini.', default: 'Memakai kode default. Simpan untuk membuat kode khusus jabatan atau lokasi ini.', bawaan: 'Memakai kode bawaan (P dan FL). Simpan untuk membuat kode khusus.' };
+  document.getElementById('jadwalKodeHint').textContent = sumberTeks[jadwalState.kodeShiftSumber] || '';
   document.getElementById('jadwalKodeBody').innerHTML = Object.entries(jadwalState.kodeShift || {}).map(([kode, v]) => barisKodeShift({ kode, label: v.label, jam: v.jam })).join('');
   document.getElementById('jadwalKodeMsg').textContent = '';
   document.getElementById('jadwalKodeOverlay').style.display = 'flex';
@@ -1308,7 +1306,7 @@ document.getElementById('jadwalKodeSimpan').addEventListener('click', async () =
     selesai: tr.querySelector('.jk-selesai').value,
   })).filter((k) => k.kode || k.label || k.mulai || k.selesai);
   const msg = document.getElementById('jadwalKodeMsg');
-  const res = await fetch('/api/jadwal/kode-shift', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ jabatan: jadwalState.jabatan, kode }) });
+  const res = await fetch('/api/jadwal/kode-shift', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ jabatan: jadwalState.jabatan, lokasi: jadwalState.lokasi, kode }) });
   const data = await res.json();
   if (!res.ok) { msg.textContent = data.error || 'Gagal menyimpan kode shift.'; return; }
   tutupJadwalKode();
