@@ -441,6 +441,19 @@ function shiftDateKey(dateKey, deltaDays) {
   return d.toISOString().slice(0, 10);
 }
 
+// Validasi input izin/cuti dari admin. Mengembalikan pesan error, atau null jika valid.
+function validasiLeaveAdmin(body, config) {
+  const TIPE = ['sakit', 'cuti', 'izin'];
+  const STATUS = ['approved', 'pending', 'rejected'];
+  const YMD = /^\d{4}-\d{2}-\d{2}$/;
+  if (!config.employees.some((e) => e.phone === String(body.phone || '').trim())) return 'Karyawan tidak terdaftar.';
+  if (!TIPE.includes(body.type)) return 'Jenis tidak valid.';
+  if (!YMD.test(body.startDate || '') || !YMD.test(body.endDate || '')) return 'Tanggal mulai dan selesai wajib diisi.';
+  if (body.endDate < body.startDate) return 'Tanggal selesai tidak boleh sebelum tanggal mulai.';
+  if (body.status && !STATUS.includes(body.status)) return 'Status tidak valid.';
+  return null;
+}
+
 // Daftar tanggal (urut naik) dalam periode [from, to] di mana karyawan tidak hadir dan
 // tidak sedang cuti/izin yang disetujui. Dipakai untuk aturan potongan alpa (Task #37):
 // hari tidak masuk yang jatuh SEBELUM tanggal masuk kerja karyawan hanya kena 1x upah harian.
@@ -2377,6 +2390,47 @@ function reasonLabelAbsen(reason) {
       writeJSON(LEAVES_FILE, leaves);
       addNotification(l.phone, 'Pengajuan Cuti/Izin Anda telah ditolak.', 'leave_rejected');
       return sendJSON(res, 200, { ok: true });
+    }
+
+    // Admin: input izin/cuti langsung untuk karyawan. Status default Disetujui (langsung berlaku).
+    if (pathName === '/api/leaves/admin' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const err = validasiLeaveAdmin(body, config);
+      if (err) return sendJSON(res, 400, { error: err });
+      const emp = config.employees.find((e) => e.phone === String(body.phone).trim());
+      const status = body.status || 'approved';
+      const now = new Date().toISOString();
+      const leaves = readJSON(LEAVES_FILE);
+      const entry = {
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        phone: emp.phone, employee: emp.name, type: body.type, startDate: body.startDate, endDate: body.endDate,
+        reason: String(body.reason || ''), status,
+        createdAt: now, reviewedAt: status === 'pending' ? null : now, createdBy: 'admin',
+      };
+      leaves.push(entry);
+      writeJSON(LEAVES_FILE, leaves);
+      return sendJSON(res, 200, { ok: true, leave: entry });
+    }
+    // Admin: ubah data izin/cuti (jenis, karyawan, tanggal, alasan, status).
+    if (pathName.startsWith('/api/leaves/') && req.method === 'PUT') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const id = pathName.split('/')[3];
+      const body = JSON.parse((await readBody(req)).toString('utf8'));
+      const err = validasiLeaveAdmin(body, config);
+      if (err) return sendJSON(res, 400, { error: err });
+      const leaves = readJSON(LEAVES_FILE);
+      const l = leaves.find((x) => x.id === id);
+      if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
+      const emp = config.employees.find((e) => e.phone === String(body.phone).trim());
+      const status = body.status || l.status;
+      if (status !== l.status) l.reviewedAt = status === 'pending' ? null : new Date().toISOString();
+      Object.assign(l, {
+        phone: emp.phone, employee: emp.name, type: body.type, startDate: body.startDate, endDate: body.endDate,
+        reason: String(body.reason || ''), status,
+      });
+      writeJSON(LEAVES_FILE, leaves);
+      return sendJSON(res, 200, { ok: true, leave: l });
     }
 
     // ---- Kasbon ----

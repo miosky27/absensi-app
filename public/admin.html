@@ -537,6 +537,7 @@
       <div id="page-ijincuti" class="page" style="display:none">
         <div class="page-head">
           <div class="title-wrap"><button class="back-btn" type="button" data-goto="lainnya"><svg class="ic"><use href="#i-chev-left"/></svg></button><div><h2 class="page-title">Izin / Cuti</h2><div class="page-sub" id="leaveSubtitle"></div></div></div>
+          <div class="page-head-actions"><button class="btn small" type="button" id="leaveAddBtn"><svg class="ic"><use href="#i-plus"/></svg>Tambah Izin / Cuti</button></div>
         </div>
         <div class="m-filter mob-only" id="leaveMobileFilter">
           <div class="tab active" data-lstatus="">Semua</div>
@@ -847,6 +848,22 @@
         <button class="btn secondary" type="button" id="logoutBtnM" style="width:100%;color:var(--red)"><svg class="ic"><use href="#i-logout"/></svg>Keluar</button>
       </div>
     </main>
+  </div>
+</div>
+
+<div id="leaveFormOverlay" class="modal-overlay">
+  <div class="modal sm">
+    <div class="modal-head"><h3 id="leaveFormTitle">Tambah Izin / Cuti</h3><button class="modal-close" type="button" id="leaveFormClose"><svg class="ic"><use href="#i-x"/></svg></button></div>
+    <div class="modal-body">
+      <div class="field"><label>Karyawan</label><select id="leaveFEmployee"></select></div>
+      <div class="field"><label>Jenis</label><select id="leaveFType"><option value="izin">Izin</option><option value="cuti">Cuti</option><option value="sakit">Sakit</option></select></div>
+      <div class="field"><label>Tanggal mulai</label><input type="date" id="leaveFStart" /></div>
+      <div class="field"><label>Tanggal selesai</label><input type="date" id="leaveFEnd" /></div>
+      <div class="field"><label>Alasan <span class="hint">(opsional)</span></label><input type="text" id="leaveFReason" /></div>
+      <div class="field"><label>Status</label><select id="leaveFStatus"><option value="approved">Disetujui</option><option value="pending">Pending</option><option value="rejected">Ditolak</option></select></div>
+      <p class="hint">Izin/cuti yang Disetujui ikut dihitung di gaji, sama seperti pengajuan yang disetujui.</p>
+    </div>
+    <div class="modal-foot"><div class="right"><span id="leaveFormMsg" class="modal-msg"></span><button class="btn secondary" type="button" id="leaveFormBatal">Batal</button><button class="btn" type="button" id="leaveFormSimpan">Simpan</button></div></div>
   </div>
 </div>
 
@@ -2263,15 +2280,16 @@ async function loadLeaves() {
     const aksi = pending
       ? `<button class="btn secondary small" type="button" data-reject="${l.id}">Tolak</button> <button class="btn small" type="button" data-approve="${l.id}">Setujui</button>`
       : `<button class="btn secondary small" type="button" data-leavedetail="${l.id}">Detail</button>`;
+    const aksiLengkap = `${aksi} <button class="btn secondary small" type="button" data-leaveedit="${l.id}">Edit</button>`;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${personCell(l.employee, pos)}</td><td>${esc(LEAVE_TYPE[l.type] || l.type)}</td><td>${tglPendek(l.startDate)}</td><td>${tglPendek(l.endDate)}</td>
       <td class="muted" style="max-width:240px">${esc(l.reason || '—')}</td><td>${statusBadge(LEAVE_STATUS, l.status)}</td>
-      <td class="num" style="white-space:nowrap">${aksi}</td>
+      <td class="num" style="white-space:nowrap">${aksiLengkap}</td>
       <td class="m-card"><div class="rcard" ${pending ? '' : `data-leavedetail="${l.id}"`}><div class="rcard-top">${personCell(l.employee, pos)}${statusBadge(LEAVE_STATUS, l.status)}</div>
         <div class="rcard-title">${esc(LEAVE_TYPE[l.type] || l.type)} · ${rentangTgl(l.startDate, l.endDate)}</div>
         ${l.reason ? `<div class="rcard-line" style="margin-top:4px">${esc(l.reason)}</div>` : ''}
-        ${pending ? `<div class="rcard-actions"><button class="btn secondary" type="button" data-reject="${l.id}">Tolak</button><button class="btn" type="button" data-approve="${l.id}">Setujui</button></div>` : ''}</div></td>
+        <div class="rcard-actions">${pending ? `<button class="btn secondary" type="button" data-reject="${l.id}">Tolak</button><button class="btn" type="button" data-approve="${l.id}">Setujui</button>` : ''}<button class="btn secondary" type="button" data-leaveedit="${l.id}">Edit</button></div></div></td>
     `;
     tbody.appendChild(tr);
   });
@@ -2287,8 +2305,56 @@ async function loadLeaves() {
       ['Diajukan', l.createdAt ? new Date(l.createdAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '—'],
     ]);
   }));
+  tbody.querySelectorAll('[data-leaveedit]').forEach((btn) => btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const l = lastLeaves.find((x) => x.id === btn.dataset.leaveedit);
+    if (l) bukaLeaveForm(l);
+  }));
   document.getElementById('leaveEmpty').textContent = lastLeaves.length === 0 ? 'Tidak ada pengajuan.' : '';
 }
+
+// Form tambah/edit izin/cuti oleh admin.
+let editingLeaveId = null;
+function hariIniJakarta() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }); }
+function bukaLeaveForm(l) {
+  editingLeaveId = l ? l.id : null;
+  const karyawan = currentEmployees.filter((e) => e.phone && e.name);
+  document.getElementById('leaveFEmployee').innerHTML = karyawan.map((e) => `<option value="${esc(e.phone)}">${esc(e.name)}</option>`).join('');
+  document.getElementById('leaveFormTitle').textContent = l ? 'Edit Izin / Cuti' : 'Tambah Izin / Cuti';
+  document.getElementById('leaveFEmployee').value = l ? l.phone : (karyawan[0] || {}).phone || '';
+  document.getElementById('leaveFType').value = l ? l.type : 'izin';
+  document.getElementById('leaveFStart').value = l ? l.startDate : hariIniJakarta();
+  document.getElementById('leaveFEnd').value = l ? l.endDate : hariIniJakarta();
+  document.getElementById('leaveFReason').value = l ? (l.reason || '') : '';
+  document.getElementById('leaveFStatus').value = l ? l.status : 'approved';
+  document.getElementById('leaveFormMsg').textContent = '';
+  document.getElementById('leaveFormOverlay').style.display = 'flex';
+}
+function tutupLeaveForm() { document.getElementById('leaveFormOverlay').style.display = 'none'; }
+document.getElementById('leaveAddBtn').addEventListener('click', () => bukaLeaveForm(null));
+document.getElementById('leaveFormClose').addEventListener('click', tutupLeaveForm);
+document.getElementById('leaveFormBatal').addEventListener('click', tutupLeaveForm);
+document.getElementById('leaveFormSimpan').addEventListener('click', async () => {
+  const msg = document.getElementById('leaveFormMsg');
+  const body = {
+    phone: document.getElementById('leaveFEmployee').value,
+    type: document.getElementById('leaveFType').value,
+    startDate: document.getElementById('leaveFStart').value,
+    endDate: document.getElementById('leaveFEnd').value,
+    reason: document.getElementById('leaveFReason').value.trim(),
+    status: document.getElementById('leaveFStatus').value,
+  };
+  const url = editingLeaveId ? `/api/leaves/${editingLeaveId}` : '/api/leaves/admin';
+  const res = await fetch(url, {
+    method: editingLeaveId ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { msg.style.color = '#c5221f'; msg.textContent = data.error || 'Gagal menyimpan'; return; }
+  tutupLeaveForm();
+  loadLeaves();
+});
 document.querySelectorAll('#leaveMobileFilter .tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('#leaveMobileFilter .tab').forEach((t) => t.classList.remove('active'));
