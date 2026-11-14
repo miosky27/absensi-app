@@ -1251,6 +1251,7 @@ function logFailedAttempt({ phone, employee, type, reason, detail, lat, lng, dis
 
   // Notifikasi ke admin maksimal 1 kali per karyawan per hari, supaya admin tahu
   // kalau karyawan tidak absen karena kendala aplikasi, bukan karena tidak hadir.
+  // Notifikasi admin hanya sekali per karyawan per hari (jam percobaan pertama). Semua jam ada di dashboard.
   const who = employee || phone;
   if (who) {
     const dateKey = dateKeyJakarta(serverTime);
@@ -2127,6 +2128,24 @@ function reasonLabelAbsen(reason) {
       if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
       const { adminPassword, ownerPasswordHash, ownerPasswordSalt, ...safeConfig } = config;
       return sendJSON(res, 200, { ...safeConfig, ownerPasswordSet: !!ownerPasswordHash });
+    }
+
+    // Profil admin (email dan password). Perubahan wajib memakai password lama.
+    if (pathName === '/api/admin/profil' && req.method === 'POST') {
+      if (!checkAdmin(req, config)) return sendJSON(res, 401, { error: 'Unauthorized' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      if (body.passwordLama !== config.adminPassword) return sendJSON(res, 403, { error: 'Password lama salah.' });
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return sendJSON(res, 400, { error: 'Email tidak valid.' });
+      const passwordBaru = String(body.passwordBaru || '');
+      if (passwordBaru && passwordBaru.length < 6) return sendJSON(res, 400, { error: 'Password baru minimal 6 karakter.' });
+      if (passwordBaru && passwordBaru !== String(body.konfirmasi || '')) return sendJSON(res, 400, { error: 'Konfirmasi password tidak sama.' });
+      const fresh = migrateConfig(readJSON(CONFIG_FILE));
+      fresh.adminEmail = email;
+      if (passwordBaru) fresh.adminPassword = passwordBaru;
+      writeJSON(CONFIG_FILE, fresh);
+      if (passwordBaru) revokeOtherAdminSessions(bearerToken(req));
+      return sendJSON(res, 200, { ok: true, adminEmail: email, passwordDiganti: !!passwordBaru });
     }
 
     if (pathName === '/api/config' && req.method === 'POST') {
