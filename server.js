@@ -2153,13 +2153,13 @@ function reasonLabelAbsen(reason) {
       const body = JSON.parse((await readBody(req)).toString('utf8'));
       // Password owner hanya bisa diubah lewat /api/owner-password (butuh password owner lama).
       delete body.ownerPasswordHash; delete body.ownerPasswordSalt; delete body.ownerPasswordSet;
+      // Password admin hanya bisa diubah lewat /api/admin/profil (butuh password lama).
+      delete body.adminPassword;
       const updated = { ...config, ...body };
       // Jangan biarkan password/email kosong tak sengaja
       if (!updated.adminPassword) updated.adminPassword = config.adminPassword;
       if (!updated.adminEmail) updated.adminEmail = config.adminEmail;
       writeJSON(CONFIG_FILE, updated);
-      // Ganti password admin -> cabut semua sesi lain (perangkat lain harus login ulang).
-      if (updated.adminPassword !== config.adminPassword) revokeOtherAdminSessions(bearerToken(req));
       return sendJSON(res, 200, { ok: true });
     }
 
