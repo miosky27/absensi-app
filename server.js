@@ -1257,10 +1257,13 @@ function logFailedAttempt({ phone, employee, type, reason, detail, lat, lng, dis
     const refId = `absen-gagal:${who}:${dateKey}`;
     const sudahAda = readJSON(ADMIN_NOTIFICATIONS_FILE).some((n) => n.refId === refId);
     if (!sudahAda) {
-      const alasan = reasonLabelAbsen(reason);
-      addAdminNotification(`${who} gagal absen hari ini (${alasan}). Kemungkinan karena kendala aplikasi, bukan karena tidak hadir.`, 'absen_gagal', refId);
+      addAdminNotification(pesanAbsenGagal(who, reasonLabelAbsen(reason), timeHHMMJakarta(serverTime)), 'absen_gagal', refId);
     }
   }
+}
+
+function pesanAbsenGagal(who, alasan, jam) {
+  return `${who} gagal absen hari ini pukul ${jam}. Alasan: ${alasan}. Kemungkinan karena kendala aplikasi, bukan karena tidak hadir.`;
 }
 
 // Label alasan absen gagal (dipakai notifikasi admin dan dashboard).
@@ -1294,7 +1297,8 @@ function reasonLabelAbsen(reason) {
 
       const validTypes = ['masuk', 'keluar', 'lembur_masuk', 'lembur_keluar'];
       if (!phone || !validTypes.includes(type) || typeof lat !== 'number' || typeof lng !== 'number' || !photoBase64) {
-        logFailedAttempt({ phone, type, reason: 'data_tidak_lengkap', detail: 'Field wajib kosong atau tidak valid', lat, lng });
+        const empKosong = config.employees.find((e) => e.phone === String(phone || '').trim());
+        logFailedAttempt({ phone: empKosong ? empKosong.phone : (phone ? String(phone) : null), employee: empKosong ? empKosong.name : null, type, reason: 'data_tidak_lengkap', detail: 'Field wajib kosong atau tidak valid', lat, lng });
         return sendJSON(res, 400, { error: 'Data tidak lengkap (nomor telepon, tipe, lokasi, foto wajib diisi)' });
       }
       const emp = config.employees.find((e) => e.phone === String(phone).trim());
@@ -2830,6 +2834,8 @@ function reasonLabelAbsen(reason) {
             };
           }
           gagalGroup[key].count += 1;
+          // Jam yang ditampilkan adalah jam percobaan pertama hari itu (sama dengan notifikasi).
+          if (f.timeHHMM < gagalGroup[key].timeHHMM) gagalGroup[key].timeHHMM = f.timeHHMM;
         });
       const absenGagalHariIni = Object.values(gagalGroup).slice(0, 50);
       return sendJSON(res, 200, {
