@@ -443,7 +443,7 @@ function shiftDateKey(dateKey, deltaDays) {
 
 // Validasi input izin/cuti dari admin. Mengembalikan pesan error, atau null jika valid.
 function validasiLeaveAdmin(body, config) {
-  const TIPE = ['sakit', 'cuti', 'izin'];
+  const TIPE = ['sakit', 'cuti', 'izin', 'alpa'];
   const STATUS = ['approved', 'pending', 'rejected'];
   const YMD = /^\d{4}-\d{2}-\d{2}$/;
   if (!config.employees.some((e) => e.phone === String(body.phone || '').trim())) return 'Karyawan tidak terdaftar.';
@@ -579,12 +579,14 @@ function computePayrollSummary(records, config, from, to) {
   const toleransi = config.toleransiTerlambatMenit || 0;
   const daily = computePayrollDailyByEmployeeDate(records, toleransi, config);
   const lemburTambahan = computeLemburTambahanByEmployeeDate(records);
-  const cutiDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE), from, to);
-  const sakitDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE).filter((l) => l.type === 'sakit'), from, to);
-  const izinDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE).filter((l) => l.type === 'izin'), from, to);
-  const cutiSajaDisetujui = countApprovedLeaveDaysByEmployee(readJSON(LEAVES_FILE).filter((l) => l.type !== 'sakit' && l.type !== 'izin'), from, to);
+  // Keterangan alpa hanya catatan admin: tidak dihitung sebagai izin/cuti, jadi gaji tidak berubah.
+  const leavesGaji = readJSON(LEAVES_FILE).filter((l) => l.type !== 'alpa');
+  const cutiDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji, from, to);
+  const sakitDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji.filter((l) => l.type === 'sakit'), from, to);
+  const izinDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji.filter((l) => l.type === 'izin'), from, to);
+  const cutiSajaDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji.filter((l) => l.type !== 'sakit' && l.type !== 'izin'), from, to);
   const kasbonPotongan = sumKasbonPaymentsByEmployee(readJSON(KASBON_PAYMENTS_FILE), from, to);
-  const leaves = readJSON(LEAVES_FILE);
+  const leaves = leavesGaji;
   // Total menit kerja per employee|tanggal, dipakai buat cek "kerja >=12 jam di H-1" (Task #36).
   const workedMinutesMap = computeWorkedMinutesByEmployeeDate(records);
 
@@ -1104,7 +1106,7 @@ const server = http.createServer(async (req, res) => {
       const monthStart = `${month}-01`;
       const monthEndDate = new Date(sy, sm, 0).getDate();
       const monthEnd = `${month}-${String(monthEndDate).padStart(2, '0')}`;
-      const myLeaves = readJSON(LEAVES_FILE).filter((l) => l.phone === phone && l.status === 'approved');
+      const myLeaves = readJSON(LEAVES_FILE).filter((l) => l.phone === phone && l.status === 'approved' && l.type !== 'alpa');
       const ijinDateSet = new Set();
       myLeaves.forEach((l) => {
         if (l.endDate < monthStart || l.startDate > monthEnd) return;
@@ -2303,7 +2305,8 @@ function reasonLabelAbsen(reason) {
     // Riwayat pengajuan izin/cuti milik karyawan sendiri.
     if (pathName === '/api/my-leaves' && req.method === 'GET') {
       const phone = String(url.searchParams.get('phone') || '').trim();
-      const leaves = readJSON(LEAVES_FILE).filter((l) => l.phone === phone)
+      // Keterangan alpa tidak ditampilkan ke karyawan (hanya catatan admin).
+      const leaves = readJSON(LEAVES_FILE).filter((l) => l.phone === phone && l.type !== 'alpa')
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
       return sendJSON(res, 200, { leaves });
     }
@@ -2330,7 +2333,7 @@ function reasonLabelAbsen(reason) {
       leaves.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
       const statusLabel = { pending: 'Pending', approved: 'Disetujui', rejected: 'Ditolak' };
-      const typeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
+      const typeLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin', alpa: 'Alpa (keterangan)' };
       const headerRow = ['Nama', 'Jenis', 'Mulai', 'Selesai', 'Alasan', 'Status'];
       const dataRows = leaves.map((l) => [
         l.employee || '', typeLabel[l.type] || l.type || '', l.startDate || '', l.endDate || '', l.reason || '', statusLabel[l.status] || l.status || '',
@@ -2399,7 +2402,7 @@ function reasonLabelAbsen(reason) {
       const err = validasiLeaveAdmin(body, config);
       if (err) return sendJSON(res, 400, { error: err });
       const emp = config.employees.find((e) => e.phone === String(body.phone).trim());
-      const status = body.status || 'approved';
+      const status = body.type === 'alpa' ? 'approved' : (body.status || 'approved');
       const now = new Date().toISOString();
       const leaves = readJSON(LEAVES_FILE);
       const entry = {
@@ -2423,7 +2426,7 @@ function reasonLabelAbsen(reason) {
       const l = leaves.find((x) => x.id === id);
       if (!l) return sendJSON(res, 404, { error: 'Pengajuan tidak ditemukan' });
       const emp = config.employees.find((e) => e.phone === String(body.phone).trim());
-      const status = body.status || l.status;
+      const status = body.type === 'alpa' ? 'approved' : (body.status || l.status);
       if (status !== l.status) l.reviewedAt = status === 'pending' ? null : new Date().toISOString();
       Object.assign(l, {
         phone: emp.phone, employee: emp.name, type: body.type, startDate: body.startDate, endDate: body.endDate,
@@ -2856,7 +2859,7 @@ function reasonLabelAbsen(reason) {
       const todayKey = dateKeyJakarta(new Date().toISOString());
       const recordsToday = readJSON(RECORDS_FILE).filter((r) => r.dateKey === todayKey);
       const karyawanMasuk = new Set(recordsToday.filter((r) => r.type === 'masuk').map((r) => r.employee)).size;
-      const leavesToday = readJSON(LEAVES_FILE).filter((l) => l.status === 'approved' && l.startDate <= todayKey && todayKey <= l.endDate);
+      const leavesToday = readJSON(LEAVES_FILE).filter((l) => l.status === 'approved' && l.type !== 'alpa' && l.startDate <= todayKey && todayKey <= l.endDate);
       const positionByName = {};
       config.employees.forEach((e) => { positionByName[e.name] = e.position || ''; });
 

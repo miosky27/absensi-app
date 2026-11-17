@@ -856,12 +856,12 @@
     <div class="modal-head"><h3 id="leaveFormTitle">Tambah Izin / Cuti</h3><button class="modal-close" type="button" id="leaveFormClose"><svg class="ic"><use href="#i-x"/></svg></button></div>
     <div class="modal-body">
       <div class="field"><label>Karyawan</label><select id="leaveFEmployee"></select></div>
-      <div class="field"><label>Jenis</label><select id="leaveFType"><option value="izin">Izin</option><option value="cuti">Cuti</option><option value="sakit">Sakit</option></select></div>
+      <div class="field"><label>Jenis</label><select id="leaveFType"><option value="izin">Izin</option><option value="cuti">Cuti</option><option value="sakit">Sakit</option><option value="alpa">Keterangan alpa</option></select></div>
       <div class="field"><label>Tanggal mulai</label><input type="date" id="leaveFStart" /></div>
       <div class="field"><label>Tanggal selesai</label><input type="date" id="leaveFEnd" /></div>
       <div class="field"><label>Alasan <span class="hint">(opsional)</span></label><input type="text" id="leaveFReason" /></div>
       <div class="field"><label>Status</label><select id="leaveFStatus"><option value="approved">Disetujui</option><option value="pending">Pending</option><option value="rejected">Ditolak</option></select></div>
-      <p class="hint">Izin/cuti yang Disetujui ikut dihitung di gaji, sama seperti pengajuan yang disetujui.</p>
+      <p class="hint" id="leaveFHint">Izin/cuti/sakit yang Disetujui mengurangi potongan alpa. Keterangan alpa hanya catatan dan tidak mengubah gaji.</p>
     </div>
     <div class="modal-foot"><div class="right"><span id="leaveFormMsg" class="modal-msg"></span><button class="btn secondary" type="button" id="leaveFormBatal">Batal</button><button class="btn" type="button" id="leaveFormSimpan">Simpan</button></div></div>
   </div>
@@ -1066,7 +1066,7 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
-const LEAVE_TYPE = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
+const LEAVE_TYPE = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin', alpa: 'Alpa (keterangan)' };
 const LEAVE_STATUS = { pending: ['pending', 'Pending'], approved: ['approved', 'Disetujui'], rejected: ['rejected', 'Ditolak'] };
 const KASBON_JENIS = { cicil: 'Cicil', potlang: 'Potong Lunas' };
 const KASBON_STATUS = { pending: ['pending', 'Pending'], disetujui: ['berjalan', 'Berjalan'], lunas: ['lunas', 'Lunas'], ditolak: ['ditolak', 'Ditolak'] };
@@ -2327,11 +2327,22 @@ function bukaLeaveForm(l) {
   document.getElementById('leaveFEnd').value = l ? l.endDate : hariIniJakarta();
   document.getElementById('leaveFReason').value = l ? (l.reason || '') : '';
   document.getElementById('leaveFStatus').value = l ? l.status : 'approved';
+  sesuaikanFormAlpa();
   document.getElementById('leaveFormMsg').textContent = '';
   document.getElementById('leaveFormOverlay').style.display = 'flex';
 }
 function tutupLeaveForm() { document.getElementById('leaveFormOverlay').style.display = 'none'; }
 document.getElementById('leaveAddBtn').addEventListener('click', () => bukaLeaveForm(null));
+function sesuaikanFormAlpa() {
+  const alpa = document.getElementById('leaveFType').value === 'alpa';
+  const st = document.getElementById('leaveFStatus');
+  if (alpa) st.value = 'approved';
+  st.disabled = alpa;
+  document.getElementById('leaveFHint').textContent = alpa
+    ? 'Keterangan alpa hanya catatan admin. Tidak mengubah perhitungan gaji dan tidak tampil sebagai izin/cuti.'
+    : 'Izin/cuti/sakit yang Disetujui mengurangi potongan alpa. Keterangan alpa hanya catatan dan tidak mengubah gaji.';
+}
+document.getElementById('leaveFType').addEventListener('change', sesuaikanFormAlpa);
 document.getElementById('leaveFormClose').addEventListener('click', tutupLeaveForm);
 document.getElementById('leaveFormBatal').addEventListener('click', tutupLeaveForm);
 document.getElementById('leaveFormSimpan').addEventListener('click', async () => {
