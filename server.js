@@ -166,6 +166,8 @@ const { parseJadwalXlsx, jadwalUntukKaryawan, buatTemplateJadwal, normalizeName:
 
 // Jadwal disimpan per bulan + jabatan + lokasi kerja. Jadwal lama (tanpa jabatan dan lokasi) tetap memakai kunci bulan saja.
 function normGrupJadwal(v) { return String(v || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+// PKL (Praktik Kerja Lapangan) tidak dibayar: dicatat kehadirannya, tapi tidak masuk perhitungan gaji.
+function apakahPKL(emp) { return normGrupJadwal(emp && emp.position) === 'pkl'; }
 function kunciJadwal(month, jabatan, lokasi) {
   const j = normGrupJadwal(jabatan), l = normGrupJadwal(lokasi);
   return (j || l) ? `${month}|${j}|${l}` : month;
@@ -570,7 +572,7 @@ function findLockCoveringDate(dateKey) {
 }
 function getPayrollForPeriod(records, config, from, to) {
   const lock = findPayrollLock(from, to);
-  if (lock) return lock.payroll;
+  if (lock) return lock.payroll.filter((p) => !apakahPKL((config.employees || []).find((e) => e.name === p.employee)));
   return computePayrollSummary(records, config, from, to);
 }
 
@@ -721,7 +723,7 @@ function computePayrollSummary(records, config, from, to) {
       gajiBersih,
     };
   });
-  return result;
+  return result.filter((p) => !apakahPKL(empByName[p.employee]));
 }
 
 // Jarak terpendek ke lokasi mana pun, dan lokasi mana yang terdekat.
@@ -1911,6 +1913,7 @@ function reasonLabelAbsen(reason) {
 
       const records = readJSON(RECORDS_FILE).filter((r) => r.dateKey >= from && r.dateKey <= to);
       const payroll = getPayrollForPeriod(records, config, from, to).filter((p) => selectedNames.has(p.employee));
+      if (payroll.length === 0) return sendJSON(res, 400, { error: 'Tidak ada karyawan yang dibayar di pilihan ini (PKL tidak masuk perhitungan gaji).' });
 
       const todayStr = formatTanggalSlash(dateKeyJakarta(new Date().toISOString()));
       const periodeStr = `${formatTanggalIndo(from)} - ${formatTanggalIndo(to)}`;
