@@ -2946,6 +2946,27 @@ function reasonLabelAbsen(reason) {
   }
 });
 
+// Pembersihan foto absen lama: file di PHOTOS_DIR yang lebih tua dari batas hari dihapus.
+// Data absen dan gaji tidak diubah; hanya file gambarnya. Foto karyawan tidak disentuh.
+const PHOTO_RETENTION_DAYS_DEFAULT = 7;
+function bersihkanFotoLama() {
+  let config;
+  try { config = readJSON(CONFIG_FILE); } catch (e) { return; }
+  const hari = Number(config.photoRetentionDays) > 0 ? Number(config.photoRetentionDays) : PHOTO_RETENTION_DAYS_DEFAULT;
+  const batas = Date.now() - hari * 24 * 60 * 60 * 1000;
+  let dihapus = 0;
+  try {
+    for (const f of fs.readdirSync(PHOTOS_DIR)) {
+      const full = path.join(PHOTOS_DIR, f);
+      const st = fs.statSync(full);
+      if (st.isFile() && st.mtimeMs < batas) { fs.unlinkSync(full); dihapus++; }
+    }
+  } catch (e) { console.error('Gagal membersihkan foto lama:', e.message); }
+  if (dihapus) console.log(`Pembersihan foto: ${dihapus} foto lebih dari ${hari} hari dihapus.`);
+}
+
 server.listen(PORT, () => {
   console.log(`Absensi app jalan di http://localhost:${PORT}`);
+  setTimeout(bersihkanFotoLama, 60 * 1000);
+  setInterval(bersihkanFotoLama, 6 * 60 * 60 * 1000);
 });
