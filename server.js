@@ -443,6 +443,24 @@ function shiftDateKey(dateKey, deltaDays) {
   return d.toISOString().slice(0, 10);
 }
 
+// Admin mengisi jam pengajuan izin sakit: dihitung dengan aturan yang sama dengan pengajuan karyawan.
+function applyJamPengajuanAdmin(entry, body, config) {
+  if (entry.type !== 'sakit' || !body.jamPengajuan) return;
+  const r = ketelambatanSakit(body.jamPengajuan, config);
+  entry.jamPengajuan = body.jamPengajuan;
+  entry.pengajuanTerlambat = r.pengajuanTerlambat;
+  entry.terlambatSakitMenit = r.terlambatSakitMenit;
+}
+
+// Aturan izin sakit: harus diajukan 1 jam sebelum jam masuk. Kalau lewat, hari pertama terlambat
+// dengan menit dari jam masuk sampai waktu pengajuan. jamHHMM = jam pengajuan (HH:MM).
+function ketelambatanSakit(jamHHMM, config) {
+  const jamMasuk = timeToMinutes((config && config.workStartTime) || '08:00');
+  const pengajuan = timeToMinutes(jamHHMM);
+  if (pengajuan > jamMasuk - 60) return { pengajuanTerlambat: true, terlambatSakitMenit: Math.max(0, pengajuan - jamMasuk) };
+  return { pengajuanTerlambat: false, terlambatSakitMenit: 0 };
+}
+
 // Validasi input izin/cuti dari admin. Mengembalikan pesan error, atau null jika valid.
 function validasiLeaveAdmin(body, config) {
   const TIPE = ['sakit', 'cuti', 'izin', 'alpa'];
@@ -453,6 +471,7 @@ function validasiLeaveAdmin(body, config) {
   if (!YMD.test(body.startDate || '') || !YMD.test(body.endDate || '')) return 'Tanggal mulai dan selesai wajib diisi.';
   if (body.endDate < body.startDate) return 'Tanggal selesai tidak boleh sebelum tanggal mulai.';
   if (body.status && !STATUS.includes(body.status)) return 'Status tidak valid.';
+  if (body.jamPengajuan && !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.jamPengajuan)) return 'Jam pengajuan tidak valid.';
   return null;
 }
 
@@ -2318,12 +2337,9 @@ function reasonLabelAbsen(reason) {
         const hariIni = dateKeyJakarta(nowIso);
         if (startDate < hariIni) return sendJSON(res, 400, { error: 'Pengajuan sakit untuk tanggal yang sudah lewat tidak bisa lewat aplikasi. Hubungi admin.' });
         if (startDate === hariIni) {
-          const sekarang = timeToMinutes(timeHHMMJakarta(nowIso));
-          const jamMasuk = timeToMinutes((config && config.workStartTime) || '08:00');
-          if (sekarang > jamMasuk - 60) {
-            entry.pengajuanTerlambat = true;
-            entry.terlambatSakitMenit = Math.max(0, sekarang - jamMasuk);
-          }
+          const r = ketelambatanSakit(timeHHMMJakarta(nowIso), config);
+          entry.pengajuanTerlambat = r.pengajuanTerlambat;
+          entry.terlambatSakitMenit = r.terlambatSakitMenit;
         }
       }
       const leaves = readJSON(LEAVES_FILE);
@@ -2442,6 +2458,7 @@ function reasonLabelAbsen(reason) {
         reason: String(body.reason || ''), status,
         createdAt: now, reviewedAt: status === 'pending' ? null : now, createdBy: 'admin',
       };
+      applyJamPengajuanAdmin(entry, body, config);
       leaves.push(entry);
       writeJSON(LEAVES_FILE, leaves);
       return sendJSON(res, 200, { ok: true, leave: entry });
@@ -2463,6 +2480,8 @@ function reasonLabelAbsen(reason) {
         phone: emp.phone, employee: emp.name, type: body.type, startDate: body.startDate, endDate: body.endDate,
         reason: String(body.reason || ''), status,
       });
+      delete l.pengajuanTerlambat; delete l.terlambatSakitMenit; delete l.jamPengajuan;
+      applyJamPengajuanAdmin(l, body, config);
       writeJSON(LEAVES_FILE, leaves);
       return sendJSON(res, 200, { ok: true, leave: l });
     }

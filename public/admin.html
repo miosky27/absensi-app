@@ -859,6 +859,7 @@
       <div class="field"><label>Jenis</label><select id="leaveFType"><option value="izin">Izin</option><option value="cuti">Cuti</option><option value="sakit">Sakit</option><option value="alpa">Keterangan alpa</option></select></div>
       <div class="field"><label>Tanggal mulai</label><input type="date" id="leaveFStart" /></div>
       <div class="field"><label>Tanggal selesai</label><input type="date" id="leaveFEnd" /></div>
+      <div class="field" id="leaveFJamWrap" style="display:none"><label>Jam pengajuan <span class="hint">(khusus sakit, kosongkan kalau tidak ada)</span></label><input type="time" id="leaveFJam" /></div>
       <div class="field"><label>Alasan <span class="hint">(opsional)</span></label><input type="text" id="leaveFReason" /></div>
       <div class="field"><label>Status</label><select id="leaveFStatus"><option value="approved">Disetujui</option><option value="pending">Pending</option><option value="rejected">Ditolak</option></select></div>
       <p class="hint" id="leaveFHint">Izin/cuti/sakit yang Disetujui mengurangi potongan alpa. Keterangan alpa hanya catatan dan tidak mengubah gaji.</p>
@@ -2326,6 +2327,7 @@ function bukaLeaveForm(l) {
   document.getElementById('leaveFStart').value = l ? l.startDate : hariIniJakarta();
   document.getElementById('leaveFEnd').value = l ? l.endDate : hariIniJakarta();
   document.getElementById('leaveFReason').value = l ? (l.reason || '') : '';
+  document.getElementById('leaveFJam').value = l && l.jamPengajuan ? l.jamPengajuan : '';
   document.getElementById('leaveFStatus').value = l ? l.status : 'approved';
   sesuaikanFormAlpa();
   document.getElementById('leaveFormMsg').textContent = '';
@@ -2334,6 +2336,9 @@ function bukaLeaveForm(l) {
 function tutupLeaveForm() { document.getElementById('leaveFormOverlay').style.display = 'none'; }
 document.getElementById('leaveAddBtn').addEventListener('click', () => bukaLeaveForm(null));
 function sesuaikanFormAlpa() {
+  const sakit = document.getElementById('leaveFType').value === 'sakit';
+  document.getElementById('leaveFJamWrap').style.display = sakit ? '' : 'none';
+  if (!sakit) document.getElementById('leaveFJam').value = '';
   const alpa = document.getElementById('leaveFType').value === 'alpa';
   const st = document.getElementById('leaveFStatus');
   if (alpa) st.value = 'approved';
@@ -2354,6 +2359,7 @@ document.getElementById('leaveFormSimpan').addEventListener('click', async () =>
     endDate: document.getElementById('leaveFEnd').value,
     reason: document.getElementById('leaveFReason').value.trim(),
     status: document.getElementById('leaveFStatus').value,
+    jamPengajuan: document.getElementById('leaveFType').value === 'sakit' ? document.getElementById('leaveFJam').value : '',
   };
   const url = editingLeaveId ? `/api/leaves/${editingLeaveId}` : '/api/leaves/admin';
   const res = await fetch(url, {
