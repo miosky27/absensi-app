@@ -583,10 +583,14 @@ function computePayrollSummary(records, config, from, to) {
   const lemburTambahan = computeLemburTambahanByEmployeeDate(records);
   // Keterangan alpa hanya catatan admin: tidak dihitung sebagai izin/cuti, jadi gaji tidak berubah.
   const leavesGaji = readJSON(LEAVES_FILE).filter((l) => l.type !== 'alpa');
-  const cutiDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji, from, to);
-  const sakitDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji.filter((l) => l.type === 'sakit'), from, to);
-  const izinDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji.filter((l) => l.type === 'izin'), from, to);
-  const cutiSajaDisetujui = countApprovedLeaveDaysByEmployee(leavesGaji.filter((l) => l.type !== 'sakit' && l.type !== 'izin'), from, to);
+  // Pengajuan sakit yang terlambat: hari pertamanya bukan hari sakit (dihitung terlambat).
+  const leavesHitung = leavesGaji
+    .map((l) => (l.pengajuanTerlambat ? { ...l, startDate: shiftDateKey(l.startDate, 1) } : l))
+    .filter((l) => l.startDate <= l.endDate);
+  const cutiDisetujui = countApprovedLeaveDaysByEmployee(leavesHitung, from, to);
+  const sakitDisetujui = countApprovedLeaveDaysByEmployee(leavesHitung.filter((l) => l.type === 'sakit'), from, to);
+  const izinDisetujui = countApprovedLeaveDaysByEmployee(leavesHitung.filter((l) => l.type === 'izin'), from, to);
+  const cutiSajaDisetujui = countApprovedLeaveDaysByEmployee(leavesHitung.filter((l) => l.type !== 'sakit' && l.type !== 'izin'), from, to);
   const kasbonPotongan = sumKasbonPaymentsByEmployee(readJSON(KASBON_PAYMENTS_FILE), from, to);
   const leaves = leavesGaji;
   // Total menit kerja per employee|tanggal, dipakai buat cek "kerja >=12 jam di H-1" (Task #36).
@@ -629,6 +633,15 @@ function computePayrollSummary(records, config, from, to) {
     const [employee] = key.split('|');
     if (!byEmployee[employee]) byEmployee[employee] = makeEmpty(employee);
     byEmployee[employee].lemburTambahanMenit += lemburTambahan[key];
+  }
+  // Pengajuan sakit yang terlambat: menit dari jam masuk sampai pengajuan dihitung sebagai terlambat.
+  for (const l of leavesGaji) {
+    if (!l.pengajuanTerlambat || l.status !== 'approved') continue;
+    if (l.startDate < from || l.startDate > to) continue;
+    if (!byEmployee[l.employee]) byEmployee[l.employee] = makeEmpty(l.employee);
+    const e = byEmployee[l.employee];
+    const m = Number(l.terlambatSakitMenit) || 0;
+    if (m > 0) { e.terlambatMenit += m; e.terlambatKali += 1; e.terlambatMenitPotongan += m; }
   }
   // Pastikan semua karyawan terdaftar muncul walau tidak ada record sama sekali di periode ini.
   for (const emp of config.employees) {
@@ -2292,13 +2305,28 @@ function reasonLabelAbsen(reason) {
       if (!emp) return sendJSON(res, 400, { error: 'Nomor telepon tidak terdaftar.' });
       if (!type || !startDate || !endDate) return sendJSON(res, 400, { error: 'Jenis, tanggal mulai, dan tanggal selesai wajib diisi.' });
       if (endDate < startDate) return sendJSON(res, 400, { error: 'Tanggal selesai tidak boleh sebelum tanggal mulai.' });
-      const leaves = readJSON(LEAVES_FILE);
+      const nowIso = new Date().toISOString();
       const entry = {
         id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
         phone: emp.phone, employee: emp.name, type, startDate, endDate,
         reason: reason || '', status: 'pending',
-        createdAt: new Date().toISOString(), reviewedAt: null,
+        createdAt: nowIso, reviewedAt: null,
       };
+      // Izin sakit harus diajukan 1 jam sebelum jam masuk. Kalau lewat, pengajuan tetap masuk
+      // tapi hari pertama dihitung terlambat (menit dari jam masuk sampai waktu pengajuan).
+      if (type === 'sakit') {
+        const hariIni = dateKeyJakarta(nowIso);
+        if (startDate < hariIni) return sendJSON(res, 400, { error: 'Pengajuan sakit untuk tanggal yang sudah lewat tidak bisa lewat aplikasi. Hubungi admin.' });
+        if (startDate === hariIni) {
+          const sekarang = timeToMinutes(timeHHMMJakarta(nowIso));
+          const jamMasuk = timeToMinutes((config && config.workStartTime) || '08:00');
+          if (sekarang > jamMasuk - 60) {
+            entry.pengajuanTerlambat = true;
+            entry.terlambatSakitMenit = Math.max(0, sekarang - jamMasuk);
+          }
+        }
+      }
+      const leaves = readJSON(LEAVES_FILE);
       leaves.push(entry);
       writeJSON(LEAVES_FILE, leaves);
       const jenisLabel = { sakit: 'Sakit', cuti: 'Cuti', izin: 'Izin' };
